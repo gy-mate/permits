@@ -1,0 +1,162 @@
+.panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 19rem;
+  max-height: calc(100vh - 4.5rem);  /* Leave room at the bottom so the panel never runs under the map attribution */
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1a1a1a;
+  border-radius: 0.6rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  font-size: 0.85rem;
+  overflow: hidden;
+  border: 2px solid transparent;
+}
+
+.panel.filters-active {
+  border-color: #1a73e8;
+  box-shadow: 0 2px 12px rgba(26, 115, 232, 0.45);
+}
+
+.panel.filters-active .panel-head {
+  background: rgba(26, 115, 232, 0.12);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid #e2e2e2;
+}
+
+.panel-head h1 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.toggle,
+.clear,
+.lang button,
+.theme button {
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+}
+
+.lang button.active,
+.theme button.active {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+}
+
+.panel-body {
+  padding: 0.6rem 0.8rem;
+  overflow-y: auto;
+}
+
+.lang {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.8rem;
+}
+
+.theme {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+.client-filter {
+  display: block;
+  margin-bottom: 0.6rem;
+}
+
+.client-filter input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.2rem;
+  padding: 0.3rem;
+}
+
+.open-timeline {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.6rem;
+  padding: 0.35rem;
+  border: 1px solid #1a73e8;
+  background: #1a73e8;
+  color: #fff;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.legend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.legend,
+.subtypes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.legend li label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.12rem 0;
+  cursor: pointer;
+}
+
+.category {
+  padding: 0.1rem 0;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.category-label {
+  font-weight: 600;
+  flex: 1;
+}
+
+.expand {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.3rem;
+  color: #555;
+}
+
+.subtypes {
+  margin-left: 1.4rem;
+  border-left: 1px solid #e2e2e2;
+  padding-left: 0.5rem;
+}
+
+.swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 0.2rem;
+  flex: none;
+}
+
+.legend-label {
+  line-height: 1.1;
+}

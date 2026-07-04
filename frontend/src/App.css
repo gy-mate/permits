@@ -1,0 +1,73 @@
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font-family: 'Noto Sans', system-ui, -apple-system, sans-serif;
+}
+
+.app {
+  position: absolute;
+  inset: 0;
+}
+
+html.dark {
+  background: #202124;
+}
+
+html.dark .panel,
+html.dark .details,
+html.dark .timeline {
+  background: rgba(32, 33, 36, 0.96);
+  color: #e8eaed;
+}
+
+html.dark .panel-head {
+  border-bottom-color: #3c4043;
+}
+
+html.dark .toggle,
+html.dark .clear,
+html.dark .lang button,
+html.dark .theme button,
+html.dark .today,
+html.dark .close,
+html.dark .client-filter input {
+  background: #3c4043;
+  color: #e8eaed;
+  border-color: #5f6368;
+}
+
+html.dark .lang button.active,
+html.dark .theme button.active {
+  background: #1a73e8;
+  border-color: #1a73e8;
+  color: #fff;
+}
+
+html.dark .subtypes {
+  border-left-color: #3c4043;
+}
+
+html.dark .expand {
+  color: #9aa0a6;
+}
+
+html.dark dt,
+html.dark .year-tick {
+  color: #9aa0a6;
+}
+
+html.dark .year-tick::before {
+  background: #5f6368;
+}
+
+html.dark .zoom-to-permits {
+  background: rgba(32, 33, 36, 0.96);
+  color: #e8eaed;
+  border-color: #5f6368;
+}
+
+html.dark .zoom-to-permits:hover {
+  background: #3c4043;
+}

@@ -1,0 +1,44 @@
+.map-root {
+  position: absolute;
+  inset: 0;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.zoom-to-permits {
+  position: absolute;
+  top: 1rem;  /* Aligned with the top edge of the controls panel */
+  left: 0.5rem;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1a1a1a;
+  border: 1px solid #ccc;
+  border-radius: 0.3rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.zoom-to-permits:hover {
+  background: #fff;
+}
+
+.map-root :deep(.maplibregl-ctrl-top-left) {
+  margin-top: 3.1rem;  /* Push the zoom/compass controls below the zoom-to-permits button */
+}
+
+.map-loading {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.85rem;
+}
