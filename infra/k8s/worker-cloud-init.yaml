@@ -1,0 +1,9 @@
+#cloud-config
+# Cloud-init the cluster-autoscaler hands to each new CX23 worker so it joins k3s as an agent
+runcmd:
+  - >-
+    curl -sfL https://get.k3s.io |
+    K3S_URL=https://10.0.0.2:6443
+    K3S_TOKEN=${TF_VAR_k3s_token}
+    sh -s - agent --kubelet-arg=cloud-provider=external
+    --node-label node.kubernetes.io/role=worker

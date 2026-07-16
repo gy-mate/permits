@@ -1,0 +1,17 @@
+#cloud-config
+write_files:
+  - path: /etc/rancher/k3s/config.yaml
+    content: |
+      token: "${k3s_token}"
+      # Use ingress-nginx + Hetzner Cloud LB instead of the bundled add-ons
+      disable:
+        - traefik
+        - servicelb
+      # The Hetzner Cloud Controller Manager manages node addresses and LBs
+      disable-cloud-controller: true
+      kubelet-arg:
+        - "cloud-provider=external"
+      node-label:
+        - "node.kubernetes.io/role=master"
+runcmd:
+  - curl -sfL https://get.k3s.io | sh -s - server

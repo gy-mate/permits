@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudflare-api-token
+  namespace: cert-manager
+type: Opaque
+stringData:
+  api-token: ${TF_VAR_cloudflare_api_token}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ${ACME_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: permits
+  namespace: permits
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      limit_except GET {
+        deny all;
+      }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${TF_VAR_hostname}
+      secretName: permits-tls
+  rules:
+    - host: ${TF_VAR_hostname}
+      http:
+        paths:
+          - path: /permits
+            pathType: Prefix
+            backend:
+              service:
+                name: permits-backend
+                port:
+                  number: 80

@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: permits-backend
+  namespace: permits
+type: Opaque
+stringData:
+  DB_CONNECTION_STRING: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@permits-db:5432/${POSTGRES_DB}
+  PERMITS_CORS_ORIGINS: "${PERMITS_CORS_ORIGINS}"
+  PERMITS_REPO_URL: ${PERMITS_REPO_URL}
+  PERMITS_ENRICH_TIMEOUT: "${PERMITS_ENRICH_TIMEOUT}"
+  PERMITS_BACKUP_S3_URI: ${PERMITS_BACKUP_S3_URI}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: permits-backend
+  namespace: permits
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: permits-backend
+  template:
+    metadata:
+      labels:
+        app: permits-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/gy-mate/permits-backend:latest
+          envFrom:
+            - secretRef:
+                name: permits-backend
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:  # To enable computing utilization ratios
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: permits-backend
+  namespace: permits
+spec:
+  selector:
+    app: permits-backend
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+# Scale pods up at 90% CPU
+# Sustained ~30 min load is approximated with long stabilization windows
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: permits-backend
+  namespace: permits
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: permits-backend
+  minReplicas: 1
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 1800
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300

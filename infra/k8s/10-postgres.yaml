@@ -1,0 +1,94 @@
+# The DB is reachable publicly, but ONLY with the username+password below 
+# — scram-sha-256 host auth is enforced (never trust)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: permits-db
+  namespace: permits
+type: Opaque
+stringData:
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
+  POSTGRES_HOST_AUTH_METHOD: scram-sha-256  # Require a password for every connection, including the public LB
+  POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: permits-db
+  namespace: permits
+spec:
+  clusterIP: None
+  selector:
+    app: permits-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# Public access via a Hetzner Cloud Load Balancer (provisioned by the CCM).
+# Access still requires the username+password — Postgres enforces scram-sha-256 auth
+apiVersion: v1
+kind: Service
+metadata:
+  name: permits-db-public
+  namespace: permits
+  annotations:
+    load-balancer.hetzner.cloud/name: permits-db
+    load-balancer.hetzner.cloud/location: fsn1
+    load-balancer.hetzner.cloud/use-private-ip: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: permits-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: permits-db
+  namespace: permits
+spec:
+  serviceName: permits-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: permits-db
+  template:
+    metadata:
+      labels:
+        app: permits-db
+    spec:
+      containers:
+        - name: postgis
+          image: postgis/postgis:18-3.6
+          envFrom:
+            - secretRef:
+                name: permits-db
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "${POSTGRES_USER}"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hcloud-volumes
+        resources:
+          requests:
+            storage: 10Gi

@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: permits-fetch
+  namespace: permits
+spec:
+  schedule: "0 0/1 * * 1-5"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3000
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: curl
+              image: curlimages/curl:8.21.0
+              args:
+                - "-fsS"
+                - "-X"
+                - "POST"
+                - "http://permits-backend/permits/fetch"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: permits-backup
+  namespace: permits
+spec:
+  schedule: "53 2 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: curl
+              image: curlimages/curl:8.11.1
+              args:
+                - "-fsS"
+                - "--max-time"
+                - "1500"
+                - "-X"
+                - "POST"
+                - "http://permits-backend/permits/backup"

@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "replicationcontrollers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events", "endpoints"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "replicasets", "daemonsets", "deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-autoscaler-hcloud
+  namespace: kube-system
+type: Opaque
+stringData:
+  HCLOUD_TOKEN: ${TF_VAR_hcloud_token}
+  HCLOUD_CLOUD_INIT: ${HCLOUD_CLOUD_INIT}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:  # Scale up when pods are pending and down when nodes are unneeded
+      serviceAccountName: cluster-autoscaler
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.31.0
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider=hetzner
+            - --stderrthreshold=info
+            - --nodes=0:3:CX23:FSN1:worker  # Max 3 workers, so the cluster total stays at most 4 CX23 (1 master + 3 workers)
+            - --scale-down-unneeded-time=10m
+          env:
+            - name: HCLOUD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-autoscaler-hcloud
+                  key: HCLOUD_TOKEN
+            - name: HCLOUD_CLOUD_INIT
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-autoscaler-hcloud
+                  key: HCLOUD_CLOUD_INIT
+            - name: HCLOUD_NETWORK
+              value: permits
+            - name: HCLOUD_IMAGE
+              value: debian-13
+            - name: HCLOUD_SSH_KEY
+              value: permits
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
