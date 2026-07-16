@@ -9,6 +9,10 @@ write_files:
         - servicelb
       # The Hetzner Cloud Controller Manager manages node addresses and LBs
       disable-cloud-controller: true
+      # Pin the node to its private-network IP so the kubelet serving cert
+      # includes it; without this the cert only covers the
+      # public IP and those calls fail x509 verification
+      node-ip: "10.0.0.2"
       kubelet-arg:
         - "cloud-provider=external"
       node-label:

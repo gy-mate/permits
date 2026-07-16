@@ -169,7 +169,8 @@ helm install hcloud-csi hcloud/hcloud-csi -n kube-system
 # ingress-nginx (fronted by a Hetzner LB) + cert-manager
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace \
-  --set controller.service.annotations."load-balancer\.hetzner\.cloud/location"=fsn1
+  --set controller.service.annotations."load-balancer\.hetzner\.cloud/location"=fsn1 \
+  --set controller.service.annotations."load-balancer\.hetzner\.cloud/use-private-ip"="true"
 helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true
 ```
