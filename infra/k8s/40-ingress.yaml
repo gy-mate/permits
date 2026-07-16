@@ -31,10 +31,6 @@ metadata:
   namespace: permits
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      limit_except GET {
-        deny all;
-      }
 spec:
   ingressClassName: nginx
   tls:
@@ -46,7 +42,14 @@ spec:
       http:
         paths:
           - path: /permits
-            pathType: Prefix
+            pathType: Exact
+            backend:
+              service:
+                name: permits-backend
+                port:
+                  number: 80
+          - path: /permits/coverage
+            pathType: Exact
             backend:
               service:
                 name: permits-backend
