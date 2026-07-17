@@ -16,7 +16,7 @@ variable "cloudflare_zone_id" {
 }
 
 variable "hostname" {
-  description = "Public hostname for the API (a subdomain like permits.example.com or a root domain like permits.com)."
+  description = "Hostname for the backend API."
   type        = string
 }
 

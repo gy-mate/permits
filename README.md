@@ -177,8 +177,10 @@ helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespa
 
 ## 5. Cloudflare DNS record for your hostname
 
-Set `TF_VAR_hostname` in `.env` to the hostname you want to serve the API on — a
-subdomain like `permits.example.com` or a root domain like `example.com`.
+Set `TF_VAR_hostname` in `.env` to the hostname for the **backend API**. Use a dedicated
+subdomain like `api.permits.example.com`: a single hostname resolves to exactly one
+origin, so the API needs its own host, leaving the human-facing `permits.example.com`
+free for the Amplify frontend (see §9).
 
 1. Get the ingress LB IPs once the CCM provisions them:
    `kubectl -n ingress-nginx get svc ingress-nginx-controller -o wide`.
@@ -289,8 +291,35 @@ cd frontend && pnpm install && pnpm dev
 
 ### Hosting (AWS Amplify)
 
+The frontend lives at `permits.example.com` (Amplify) and calls the backend directly at
+its own host `api.permits.example.com` (`TF_VAR_hostname`). Cross-origin, so the backend
+must allow the frontend origin via `PERMITS_CORS_ORIGINS` (step 6 in §5 / `.env`).
+
 1. Amplify Console → *New app → Host web app* → connect this GitHub repo.
 2. **Monorepo:** set the app root to `frontend` (Amplify reads `frontend/amplify.yml`,
    which runs `pnpm install && pnpm run build` and publishes `dist/`).
-3. Set the env var `VITE_API_BASE_URL=https://<your-hostname>` (matching `TF_VAR_hostname`).
-4. Pushes to `main` auto-deploy via Amplify's GitHub integration.
+3. Set the env var `VITE_API_BASE_URL=https://api.permits.example.com` (your
+   `TF_VAR_hostname`). Ensure that origin is in the backend's `PERMITS_CORS_ORIGINS`
+   (e.g. `PERMITS_CORS_ORIGINS=https://permits.example.com`).
+4. **Custom domain** (Cloudflare, i.e. a third-party DNS provider — see the
+   [AWS docs](https://docs.aws.amazon.com/amplify/latest/userguide/custom-domains.html)):
+   Amplify Console → *Hosting → Custom domains → Add domain* → enter the **root** domain
+   `example.com`. Since DNS lives at Cloudflare, choose **Manual configuration** (*not*
+   "Create hosted zone on Route 53"), then **Configure domain**.
+   1. Amplify pre-fills two subdomain entries (`example.com` + `www.example.com`). On this
+      screen, edit that mapping to point the `permits` subdomain → the `main` branch and
+      remove the default entries, since we only want the subdomain.
+   2. Leave **Amplify managed certificate** selected (a free ACM cert, valid 13 months and
+      auto-renewed), then **Add domain**.
+   3. *Actions → View DNS records.* Amplify shows two **CNAME** records; add both in
+      Cloudflare as **DNS-only (grey cloud)** — CloudFront terminates TLS, and proxying
+      would break ACM's CNAME validation:
+      - the **verification CNAME** (a `_xxxx….permits` name → a `…acm-validations.aws`
+        target) — enter only the `_xxxx…permits` label as the record name;
+      - the **subdomain CNAME** (`permits` → a `…cloudfront.net` target).
+   4. Add these records **promptly** — ACM starts checking immediately and backs off over
+      time, so a late record can leave the domain stuck in *pending verification*. No
+      ANAME/ALIAS is needed here because we only map a subdomain, not the root.
+   5. Wait for Amplify to validate and issue the cert. Verification and DNS propagation for
+      third-party domains can take **up to 48 hours**.
+5. Pushes to `main` auto-deploy via Amplify's GitHub integration.
