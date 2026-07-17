@@ -107,7 +107,7 @@ cd backend && uv sync --no-install-project --extra dev && uv run pytest
 
 ## 2. Build & push images (AMD64)
 
-CX23 is x86, so images are `linux/amd64`. CI (`.github/workflows/build-images.yml`)
+CX23 is x86, so images are `linux/amd64`. CI (`.github/workflows/build-images.yaml`)
 builds `permits-backend` on push to `main`. PostGIS uses the official
 `postgis/postgis:18-3.6` image from Docker Hub — nothing to build.
 
