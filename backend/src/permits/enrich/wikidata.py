@@ -63,7 +63,7 @@ async def run_sparql(client: httpx.AsyncClient, query: str) -> list[dict]:
                 if response.status_code == 429:
                     delay = retry_after_seconds(response)
                     logger.warning(
-                        "Wikidata throttled us (HTTP 429); waiting %.0fs per Retry-After.",
+                        "The Wikidata API throttled us (HTTP 429); waiting %.0fs as requested by the Retry-After header",
                         delay,
                     )
                     await asyncio.sleep(delay)
