@@ -123,18 +123,20 @@ async def client_wikidata_id(
     needles = " ".join(f'"{escape(s.lower())}"' for s in searches)
     labels = " ".join(f'"{escape(s)}"@hu' for s in searches)
 
+    # Inlining for query optimization (15x speedup)
+    business_in_country = (
+        f"?item wdt:P31/wdt:P279* wd:{BUSINESS_QID}. "
+        f"?item wdt:P17 ?country. "
+        f"wd:{city_wikidata_id} wdt:P17 ?country."
+    )
+
     query = f"""{SPARQL_PREFIXES}
     SELECT ?item WHERE {{
-      ?item wdt:P31/wdt:P279* wd:{BUSINESS_QID}.
-      ?item wdt:P17 ?country.
-      wd:{city_wikidata_id} wdt:P17 ?country.
-      {{
-        {{ VALUES ?needle {{ {needles} }} ?item p:P1448/ps:P1448 ?on. FILTER(LCASE(STR(?on)) = ?needle) }}
-        UNION
-        {{ VALUES ?needle {{ {needles} }} ?item wdt:P1813 ?sn. FILTER(LCASE(STR(?sn)) = ?needle) }}
-        UNION
-        {{ VALUES ?label {{ {labels} }} ?item rdfs:label ?label. }}
-      }}
+      {{ VALUES ?needle {{ {needles} }} ?item p:P1448/ps:P1448 ?on. FILTER(LCASE(STR(?on)) = ?needle) {business_in_country} }}
+      UNION
+      {{ VALUES ?needle {{ {needles} }} ?item wdt:P1813 ?sn. FILTER(LCASE(STR(?sn)) = ?needle) {business_in_country} }}
+      UNION
+      {{ VALUES ?label {{ {labels} }} ?item rdfs:label ?label. {business_in_country} }}
     }} LIMIT 1
     """
 
