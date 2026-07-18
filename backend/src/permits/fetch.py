@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tqdm import tqdm
 
 from permits.db import SessionLocal
-from permits.enrich import budapest, oeny, qlever, tz, wikidata
+from permits.enrich import budapest, oeny, osm, tz, wikidata
 from permits.enrich.client_name import correct_client
 from permits.enrich.http import make_client
 from permits.enrich.parse import extract_conscription_number, parse_address
@@ -59,7 +59,7 @@ async def resolve_location(
 
     address = parse_address(place)
     if address:
-        return await qlever.geocode_address(client, *address)
+        return await osm.geocode_address(client, *address)
 
     return None
 
@@ -77,7 +77,7 @@ async def refine_clock_location(
     if geometry is None or "public_clock" not in usage_type.value:
         return geometry
 
-    clock = await qlever.find_clock(client, geometry.bounds)
+    clock = await osm.find_clock(client, geometry.bounds)
     if clock is not None:
         logger.info("Using OSM clock coordinates for a %s permit.", usage_type.value)
         return clock

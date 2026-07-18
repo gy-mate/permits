@@ -77,6 +77,8 @@ The backend is configured entirely through environment variables (see `.env.exam
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Database credentials. Compose builds the backend's async SQLAlchemy DSN (`DB_CONNECTION_STRING`) from these. |
 | `PERMITS_CORS_ORIGINS` | CORS origins for the public read API (comma-separated, or `*`). |
 | `PERMITS_ENRICH_TIMEOUT` | Per-lookup total retry budget (seconds) before the enrichment — and the whole import transaction — fails. |
+| `PERMITS_WIKIDATA_SPARQL_API_URL` | Wikidata SPARQL endpoint used for client / KSH code / timezone lookups. |
+| `PERMITS_OSM_SPARQL_API_URL` | OSM SPARQL endpoint used for the address geocoding fallback. |
 | `PERMITS_BACKUP_S3_URI` | Destination for `POST /permits/backup` dumps, e.g. `s3://my-permits-backups` (an optional key prefix may follow the bucket). AWS credentials are read from the standard `AWS_*` environment variables. Empty disables the endpoint. |
 
 ---

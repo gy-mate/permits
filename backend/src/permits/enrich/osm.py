@@ -11,11 +11,10 @@ import httpx
 from shapely import wkt as shapely_wkt
 from shapely.geometry.base import BaseGeometry
 
+from permits.config import get_settings
 from permits.enrich.http import retrying
 
-logger = logging.getLogger("permits.enrich.qlever")
-
-QLEVER_URL = "https://qlever.dev/api/osm-planet"
+logger = logging.getLogger("permits.enrich.osm")
 
 PREFIXES = """
 PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
@@ -70,9 +69,10 @@ def build_clock_query(bbox: tuple[float, float, float, float]) -> str:
 
     return f"""{PREFIXES}
     SELECT ?geom WHERE {{
+      VALUES ?area {{ "{bbox_wkt(bbox)}"^^geo:wktLiteral }}
       ?osm osmkey:amenity "clock" .
       ?osm geo:hasGeometry/geo:asWKT ?geom .
-      FILTER(geof:sfWithin(?geom, "{bbox_wkt(bbox)}"^^geo:wktLiteral))
+      FILTER(geof:sfContains(?area, ?geom))
     }}
     LIMIT 1
     """
@@ -84,7 +84,7 @@ async def query_geometry(client: httpx.AsyncClient, query: str) -> BaseGeometry 
     async for attempt in retrying():
         with attempt:
             response = await client.post(
-                QLEVER_URL,
+                get_settings().osm_sparql_api_url,
                 data={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
             )

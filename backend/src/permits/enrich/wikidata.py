@@ -11,15 +11,23 @@ from functools import lru_cache
 
 import httpx
 
+from permits.config import get_settings
 from permits.enrich.client_name import wikidata_search_names
 from permits.enrich.http import retrying
 
 logger = logging.getLogger("permits.enrich.wikidata")
 
-SPARQL_URL = "https://query.wikidata.org/sparql"
 BUDAPEST_QID = "Q1781"
 BUSINESS_QID = "Q4830453"
 DEFAULT_RETRY_AFTER = 60.0  # Fallback when a 429 response omits (or mangles) its Retry-After header
+
+SPARQL_PREFIXES = """
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX p: <http://www.wikidata.org/prop/>
+PREFIX ps: <http://www.wikidata.org/prop/statement/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+"""
 
 
 def retry_after_seconds(response: httpx.Response) -> float:
@@ -47,7 +55,7 @@ async def run_sparql(client: httpx.AsyncClient, query: str) -> list[dict]:
         with attempt:
             while True:
                 response = await client.get(
-                    SPARQL_URL,
+                    get_settings().wikidata_sparql_api_url,
                     params={"query": query, "format": "json"},
                     headers={"Accept": "application/sparql-results+json"},
                 )
@@ -115,7 +123,7 @@ async def client_wikidata_id(
     needles = " ".join(f'"{escape(s.lower())}"' for s in searches)
     labels = " ".join(f'"{escape(s)}"@hu' for s in searches)
 
-    query = f"""
+    query = f"""{SPARQL_PREFIXES}
     SELECT ?item WHERE {{
       ?item wdt:P31/wdt:P279* wd:{BUSINESS_QID}.
       ?item wdt:P17 ?country.
@@ -148,7 +156,7 @@ async def ksh_code(client: httpx.AsyncClient, city_wikidata_id: str) -> str | No
     if city_wikidata_id == BUDAPEST_QID:
         return "budap"
 
-    query = f"""
+    query = f"""{SPARQL_PREFIXES}
     SELECT ?code WHERE {{ wd:{city_wikidata_id} wdt:P939 ?code. }} LIMIT 1
     """
 
@@ -169,7 +177,7 @@ async def iana_timezone(client: httpx.AsyncClient, city_wikidata_id: str) -> str
     if city_wikidata_id == BUDAPEST_QID:
         return "Europe/Budapest"
 
-    query = f"""
+    query = f"""{SPARQL_PREFIXES}
     SELECT ?iana WHERE {{
       wd:{city_wikidata_id} wdt:P421 ?tz.
       ?tz wdt:P6237 ?iana.

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     cors_origins: str
     enrich_timeout: float
     backup_s3_uri: str = ""
+    wikidata_sparql_api_url: str
+    osm_sparql_api_url: str
 
     @property
     def user_agent(self) -> str:
