@@ -322,4 +322,7 @@ must allow the frontend origin via `PERMITS_CORS_ORIGINS` (step 6 in §5 / `.env
       ANAME/ALIAS is needed here because we only map a subdomain, not the root.
    5. Wait for Amplify to validate and issue the cert. Verification and DNS propagation for
       third-party domains can take **up to 48 hours**.
-5. Pushes to `main` auto-deploy via Amplify's GitHub integration.
+5. **Rewrites & redirects:** remove Amplify's default SPA rewrite rule
+   (`</^[^.]+$|\.(?!…)…/>` → `/index.html`, `200`) under *Hosting → Rewrites and
+   redirects*.
+6. Pushes to `main` auto-deploy via Amplify's GitHub integration.
