@@ -13,8 +13,6 @@ geometry. This project ingests it, **enriches** each permit, and stores it in Po
   reprojected EOV→WGS84), falling back to QLever/OSM address geocoding.
 - **Timezone-correct dates** (00:00 in the city's timezone).
 
-Licensed **GPL-3.0** (see [`license.txt`](license.txt)).
-
 ---
 
 ## Repository layout
@@ -230,7 +228,21 @@ reacts to *sustained* (~30 min) load (Kubernetes cannot express an exact "for 30
 minutes" rule). When new pods don't fit, the **cluster-autoscaler** adds CX23 **worker
 nodes up to 3** (cluster total ≤ 4 CX23) and removes them when idle.
 
-### 6.1 Updating a running Deployment
+### 6.1. Connecting to the database
+
+The Postgres StatefulSet is exposed publicly by the `permits-db-public` Hetzner Load
+Balancer (`infra/k8s/10-postgres.yaml`). Connect via port `5432` with:
+
+1. **Username and password:** the `POSTGRES_USER` / `POSTGRES_PASSWORD` defined in `.env`.
+2. **Host:** the Load Balancer's external IP. `export KUBECONFIG=infra/tofu/kubeconfig`
+   first, then:
+
+   ```bash
+   kubectl -n permits get svc permits-db-public \
+     -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{"\n"}{end}'
+   ```
+
+### 6.2. Updating a running Deployment
 
 `export KUBECONFIG=infra/tofu/kubeconfig` first.
 
