@@ -1,4 +1,4 @@
-# permits
+# permits 🧾
 
 Hourly-ingested, geocoded, queryable dataset of **Budapest public-space-use permits**,
 served over a public FastAPI bbox endpoint and
@@ -107,10 +107,12 @@ cd backend && uv sync --no-install-project --extra dev && uv run pytest
 
 ---
 
-## 2. Build & push images (AMD64)
+## 2. Build & push images
 
-CX23 is x86, so images are `linux/amd64`. CI (`.github/workflows/build-images.yaml`)
-builds `permits-backend` on push to `main`. PostGIS uses the official
+CI (`.github/workflows/build-images.yaml`) builds `permits-backend` for both
+`linux/amd64` and `linux/arm64`, and pushes it to GHCR tagged with the
+release version **and** `latest` — triggered by pushing a `vMAJOR.MINOR.PATCH` tag
+(see [§6.1](#61-updating-a-running-deployment)). PostGIS uses the official
 `postgis/postgis:18-3.6` image from Docker Hub — nothing to build.
 
 ---
@@ -227,6 +229,42 @@ The backend **HPA** targets **90% CPU**; its stabilization windows are tuned so 
 reacts to *sustained* (~30 min) load (Kubernetes cannot express an exact "for 30
 minutes" rule). When new pods don't fit, the **cluster-autoscaler** adds CX23 **worker
 nodes up to 3** (cluster total ≤ 4 CX23) and removes them when idle.
+
+### 6.1 Updating a running Deployment
+
+`export KUBECONFIG=infra/tofu/kubeconfig` first.
+
+#### New backend image (code change)
+
+Push a release tag:
+
+```bash
+git tag v1.2.3 && git push origin v1.2.3
+```
+
+CI builds `permits-backend` for amd64+arm64 and pushes both the version tag 
+and `latest` to GHCR (§2). The Deployment tracks `ghcr.io/gy-mate/permits-backend:latest`, 
+so once CI finishes, roll the pods to pull the new image:
+
+```bash
+kubectl -n permits rollout restart deployment/permits-backend
+kubectl -n permits rollout status  deployment/permits-backend
+```
+
+#### Changed config (`.env`) or manifest
+
+Re-export `.env` and re-apply the affected manifest. A Secret change does **not** 
+restart pods on its own, so follow a `20-backend.yaml` re-apply with a `rollout restart`:
+
+```bash
+set -a; . ./.env; set +a
+envsubst < infra/k8s/20-backend.yaml | kubectl apply -f -        # Secret + Deployment
+kubectl -n permits rollout restart deployment/permits-backend    # pick up Secret changes
+```
+
+The CronJobs, ingress, and autoscaler update the same way — re-apply the file you
+changed (wrap it in `envsubst` if it contains `${…}` placeholders, per §6). Roll back a
+bad e.g. backend release with `kubectl -n permits rollout undo deployment/permits-backend`.
 
 ---
 
