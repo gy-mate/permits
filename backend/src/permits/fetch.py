@@ -25,7 +25,7 @@ from permits.enrich.http import make_client
 from permits.enrich.parse import extract_conscription_number, parse_address
 from permits.logging_handler import TqdmLoggingHandler
 from permits.models import HU, Permit
-from permits.usage_types import translate_purpose
+from permits.usage_types import UsageType, translate_purpose
 
 logger = logging.getLogger("permits.fetch")
 
@@ -81,6 +81,31 @@ async def refine_clock_location(
     if clock is not None:
         logger.info("Using OSM clock coordinates for a %s permit.", usage_type.value)
         return clock
+
+    return geometry
+
+
+async def refine_fuel_station_location(
+    client, usage_type, geometry: BaseGeometry | None, client_wikidata_id: str | None
+) -> BaseGeometry | None:
+    """For fuel station permits, snap the area to the single matching OSM node.
+
+    If the usage type is a fuel station and we have both a permit area and the client's
+    Wikidata ID, look up ``amenity=fuel`` nodes within that area whose ``brand:wikidata``
+    or ``operator:wikidata`` equals the client's ID. When exactly one matches, use its
+    precise coordinates; otherwise keep the original geometry.
+    """
+
+    if geometry is None or client_wikidata_id is None:
+        return geometry
+
+    if usage_type is not UsageType.fuel_station:
+        return geometry
+
+    station = await osm.find_fuel_station(client, geometry.bounds, client_wikidata_id)
+    if station is not None:
+        logger.info("Using OSM fuel-station coordinates for a %s permit", usage_type.value)
+        return station
 
     return geometry
 
@@ -218,6 +243,7 @@ async def build_permit(
 
     geometry = await resolve_location(client, ksh_code, conscription_number, place)
     geometry = await refine_clock_location(client, usage_type, geometry)
+    geometry = await refine_fuel_station_location(client, usage_type, geometry, client_qid)
 
     return Permit(
         queried_at=queried_at,
