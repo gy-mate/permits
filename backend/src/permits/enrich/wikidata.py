@@ -54,9 +54,9 @@ async def run_sparql(client: httpx.AsyncClient, query: str) -> list[dict]:
     async for attempt in retrying():
         with attempt:
             while True:
-                response = await client.get(
+                response = await client.post(
                     get_settings().wikidata_sparql_api_url,
-                    params={"query": query, "format": "json"},
+                    data={"query": query, "format": "json"},
                     headers={"Accept": "application/sparql-results+json"},
                 )
 
@@ -70,6 +70,12 @@ async def run_sparql(client: httpx.AsyncClient, query: str) -> list[dict]:
                     continue
 
                 break
+            if response.is_server_error:
+                logger.warning(
+                    "Wikidata SPARQL request failed with HTTP %d; query: %s",
+                    response.status_code,
+                    " ".join(query.split()),
+                )
             response.raise_for_status()
 
             bindings = response.json()["results"]["bindings"]

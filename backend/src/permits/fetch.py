@@ -77,7 +77,7 @@ async def refine_clock_location(
     if geometry is None or "public_clock" not in usage_type.value:
         return geometry
 
-    clock = await osm.find_clock(client, geometry.bounds)
+    clock = await osm.find_clock(client, geometry)
     if clock is not None:
         logger.info("Using OSM clock coordinates for a %s permit.", usage_type.value)
         return clock
@@ -102,7 +102,7 @@ async def refine_fuel_station_location(
     if usage_type is not UsageType.fuel_station:
         return geometry
 
-    station = await osm.find_fuel_station(client, geometry.bounds, client_wikidata_id)
+    station = await osm.find_fuel_station(client, geometry, client_wikidata_id)
     if station is not None:
         logger.info("Using OSM fuel-station coordinates for a %s permit", usage_type.value)
         return station

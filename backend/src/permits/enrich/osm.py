@@ -54,25 +54,15 @@ def strip_crs(literal: str) -> str:
     return literal
 
 
-def bbox_wkt(bbox: tuple[float, float, float, float]) -> str:
-    """A closed WKT polygon for a ``(min_lon, min_lat, max_lon, max_lat)`` bbox."""
-
-    min_lon, min_lat, max_lon, max_lat = bbox
-    return (
-        f"POLYGON(({min_lon} {min_lat}, {max_lon} {min_lat}, "
-        f"{max_lon} {max_lat}, {min_lon} {max_lat}, {min_lon} {min_lat}))"
-    )
-
-
-def build_clock_query(bbox: tuple[float, float, float, float]) -> str:
-    """SPARQL for ``amenity=clock`` nodes whose geometry lies within ``bbox``.
+def build_clock_query(area: BaseGeometry) -> str:
+    """SPARQL for ``amenity=clock`` nodes whose geometry lies within ``area``.
 
     ``LIMIT 2`` is enough for the caller to tell "exactly one" from "several".
     """
 
     return f"""{PREFIXES}
     SELECT ?geom WHERE {{
-      VALUES ?area {{ "{bbox_wkt(bbox)}"^^geo:wktLiteral }}
+      VALUES ?area {{ "{area.wkt}"^^geo:wktLiteral }}
       ?osm osmkey:amenity "clock" .
       ?osm geo:hasGeometry/geo:asWKT ?geom .
       FILTER(geof:sfContains(?area, ?geom))
@@ -81,10 +71,8 @@ def build_clock_query(bbox: tuple[float, float, float, float]) -> str:
     """
 
 
-def build_fuel_station_query(
-    bbox: tuple[float, float, float, float], wikidata_id: str
-) -> str:
-    """SPARQL for ``amenity=fuel`` nodes within ``bbox`` whose brand or operator matches.
+def build_fuel_station_query(area: BaseGeometry, wikidata_id: str) -> str:
+    """SPARQL for ``amenity=fuel`` nodes within ``area`` whose brand or operator matches.
 
     A node qualifies when its ``brand:wikidata`` or ``operator:wikidata`` tag equals
     ``wikidata_id``. The two tags form a UNION; each branch repeats the amenity and
@@ -96,6 +84,7 @@ def build_fuel_station_query(
 
     qid = escape(wikidata_id)
     match = (
+        f'VALUES ?area {{ "{area.wkt}"^^geo:wktLiteral }} '
         '?osm osmkey:amenity "fuel" . '
         '?osm geo:hasGeometry/geo:asWKT ?geom . '
         'FILTER(geof:sfContains(?area, ?geom))'
@@ -103,7 +92,6 @@ def build_fuel_station_query(
 
     return f"""{PREFIXES}
     SELECT DISTINCT ?osm ?geom WHERE {{
-      VALUES ?area {{ "{bbox_wkt(bbox)}"^^geo:wktLiteral }}
       {{ ?osm osmkey:brand:wikidata "{qid}" . {match} }}
       UNION
       {{ ?osm osmkey:operator:wikidata "{qid}" . {match} }}
@@ -124,6 +112,12 @@ async def query_geometries(
                 data={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
             )
+            if response.is_server_error:
+                logger.warning(
+                    "OSM SPARQL request failed with HTTP %d; query: %s",
+                    response.status_code,
+                    " ".join(query.split()),
+                )
             response.raise_for_status()
 
             bindings = response.json()["results"]["bindings"]
@@ -163,14 +157,14 @@ async def geocode_address(
 
 
 async def find_clock(
-    client: httpx.AsyncClient, bbox: tuple[float, float, float, float]
+    client: httpx.AsyncClient, area: BaseGeometry
 ) -> BaseGeometry | None:
-    """Find the single OSM ``amenity=clock`` within ``bbox`` (WGS84).
-    Returns the point only when exactly one clock lies within ``bbox``.
+    """Find the single OSM ``amenity=clock`` within ``area`` (WGS84).
+    Returns the point only when exactly one clock lies within ``area``.
     """
 
-    logger.info("QLever clock search within bbox %s", bbox)
-    geometry = await single_geometry(client, build_clock_query(bbox))
+    logger.info("QLever clock search within area %s", area.bounds)
+    geometry = await single_geometry(client, build_clock_query(area))
 
     if geometry is not None:
         logger.info("QLever: clock found at %s", geometry.centroid.coords[0])
@@ -179,17 +173,17 @@ async def find_clock(
 
 async def find_fuel_station(
     client: httpx.AsyncClient,
-    bbox: tuple[float, float, float, float],
+    area: BaseGeometry,
     wikidata_id: str,
 ) -> BaseGeometry | None:
-    """Find the sole ``amenity=fuel`` in ``bbox`` matching ``wikidata_id``.
-    Returns the geometry only when exactly one OSM fuel node within ``bbox`` carries a
+    """Find the sole ``amenity=fuel`` in ``area`` matching ``wikidata_id``.
+    Returns the geometry only when exactly one OSM fuel node within ``area`` carries a
     matching ``brand:wikidata`` or ``operator:wikidata``.
     """
 
-    logger.info("QLever fuel-station search for %s within bbox %s", wikidata_id, bbox)
+    logger.info("QLever fuel-station search for %s within area %s", wikidata_id, area.bounds)
     geometry = await single_geometry(
-        client, build_fuel_station_query(bbox, wikidata_id)
+        client, build_fuel_station_query(area, wikidata_id)
     )
 
     if geometry is not None:
