@@ -21,9 +21,21 @@ SEARCH_URL = f"{API_BASE}/search"
 BBOX_URL = f"{API_BASE}/bounding-box"
 
 EOV_TO_WGS84 = Transformer.from_crs("EPSG:23700", "EPSG:4326", always_xy=True)
+WGS84_TO_EOV = Transformer.from_crs("EPSG:4326", "EPSG:23700", always_xy=True)
 
 
-def _select_parcel(results: list[dict], lot_number: str) -> dict | None:
+def buffer_metres(geometry: BaseGeometry, metres: float) -> BaseGeometry:
+    """Grow a WGS84 geometry by ``metres``, buffering in EOV projection."""
+
+    geom_eov = shapely_transform(
+        lambda x, y, z=None: WGS84_TO_EOV.transform(x, y), geometry
+    )
+    return shapely_transform(
+        lambda x, y, z=None: EOV_TO_WGS84.transform(x, y), geom_eov.buffer(metres)
+    )
+
+
+def select_parcel(results: list[dict], lot_number: str) -> dict | None:
     """Pick the result whose lot number matches exactly, else the first one.
 
     The search can return several parcels (e.g. a numerator hit and its sub-lots);
@@ -64,7 +76,7 @@ async def find_parcel_id(
                 logger.info("OENY: no parcel for lot %s", lot_number)
                 return None
 
-            match = _select_parcel(results, lot_number)
+            match = select_parcel(results, lot_number)
             parcel_id = match["id"] if match else None
 
             logger.info("OENY: lot %s -> parcel id %s", lot_number, parcel_id)

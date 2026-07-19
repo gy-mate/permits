@@ -32,6 +32,7 @@ logger = logging.getLogger("permits.fetch")
 CITY_WIKIDATA_ID = wikidata.BUDAPEST_QID
 NATURAL_PERSON_MARKER = "Magánszemély"
 PROGRESS_BAR_REFRESH_SECONDS = 30
+OSM_MATCH_BUFFER_METRES = 5  # If the OSM node lies just outside the land plot
 
 
 def to_int(value: str | None) -> int | None:
@@ -77,7 +78,8 @@ async def refine_clock_location(
     if geometry is None or "public_clock" not in usage_type.value:
         return geometry
 
-    clock = await osm.find_clock(client, geometry)
+    area = oeny.buffer_metres(geometry, OSM_MATCH_BUFFER_METRES)
+    clock = await osm.find_clock(client, area)
     if clock is not None:
         logger.info("Using OSM clock coordinates for a %s permit.", usage_type.value)
         return clock
@@ -102,7 +104,8 @@ async def refine_fuel_station_location(
     if usage_type is not UsageType.fuel_station:
         return geometry
 
-    station = await osm.find_fuel_station(client, geometry, client_wikidata_id)
+    area = oeny.buffer_metres(geometry, OSM_MATCH_BUFFER_METRES)
+    station = await osm.find_fuel_station(client, area, client_wikidata_id)
     if station is not None:
         logger.info("Using OSM fuel-station coordinates for a %s permit", usage_type.value)
         return station

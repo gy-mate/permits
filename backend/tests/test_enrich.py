@@ -2,14 +2,27 @@
 
 import datetime as dt
 
+from shapely.geometry import Point, box
+
 from permits.enrich.client_name import (
     correct_client,
     wikidata_search_name,
     wikidata_search_names,
 )
+from permits.enrich.oeny import buffer_metres
 from permits.enrich.parse import extract_conscription_number, parse_address
 from permits.enrich.tz import day_start
 from permits.usage_types import UsageType, translate_purpose
+
+
+def test_buffer_metres_grows_polygon_by_metres():
+    land_plot = box(19.05, 47.5, 19.0513, 47.5009)  # ~ 100m x 100m square in central Budapest
+    point_nearby = Point(19.05, 47.49994)  # ~7m south of the square
+
+    assert not land_plot.contains(point_nearby)
+
+    assert not buffer_metres(land_plot, 5).contains(point_nearby)
+    assert buffer_metres(land_plot, 10).contains(point_nearby)
 
 
 def test_translate_known_and_unknown():
