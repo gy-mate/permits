@@ -71,8 +71,10 @@ def build_clock_query(area: BaseGeometry) -> str:
     """
 
 
-def build_fuel_station_query(area: BaseGeometry, wikidata_id: str) -> str:
-    """SPARQL for ``amenity=fuel`` nodes within ``area`` whose brand or operator matches.
+def build_branded_amenity_query(
+    area: BaseGeometry, amenity: str, wikidata_id: str
+) -> str:
+    """SPARQL for ``amenity`` nodes within ``area`` whose brand or operator matches.
 
     A node qualifies when its ``brand:wikidata`` or ``operator:wikidata`` tag equals
     ``wikidata_id``. The two tags form a UNION; each branch repeats the amenity and
@@ -85,7 +87,7 @@ def build_fuel_station_query(area: BaseGeometry, wikidata_id: str) -> str:
     qid = escape(wikidata_id)
     match = (
         f'VALUES ?area {{ "{area.wkt}"^^geo:wktLiteral }} '
-        '?osm osmkey:amenity "fuel" . '
+        f'?osm osmkey:amenity "{escape(amenity)}" . '
         '?osm geo:hasGeometry/geo:asWKT ?geom . '
         'FILTER(geof:sfContains(?area, ?geom))'
     )
@@ -163,7 +165,7 @@ async def find_clock(
     Returns the point only when exactly one clock lies within ``area``.
     """
 
-    logger.info("QLever clock search within area %s", area.bounds)
+    logger.info("QLever clock search within area with bounds %s", area.bounds)
     geometry = await single_geometry(client, build_clock_query(area))
 
     if geometry is not None:
@@ -171,21 +173,27 @@ async def find_clock(
     return geometry
 
 
-async def find_fuel_station(
+async def find_branded_amenity(
     client: httpx.AsyncClient,
     area: BaseGeometry,
+    amenity: str,
     wikidata_id: str,
 ) -> BaseGeometry | None:
-    """Find the sole ``amenity=fuel`` in ``area`` matching ``wikidata_id``.
-    Returns the geometry only when exactly one OSM fuel node within ``area`` carries a
-    matching ``brand:wikidata`` or ``operator:wikidata``.
+    """Find the sole ``amenity`` node in ``area`` matching ``wikidata_id``.
+    Returns the geometry only when exactly one OSM node of that amenity within ``area``
+    carries a matching ``brand:wikidata`` or ``operator:wikidata``.
     """
 
-    logger.info("QLever fuel-station search for %s within area %s", wikidata_id, area.bounds)
+    logger.info(
+        "QLever %s search for %s within area with bounds %s",
+        amenity,
+        wikidata_id,
+        area.bounds,
+    )
     geometry = await single_geometry(
-        client, build_fuel_station_query(area, wikidata_id)
+        client, build_branded_amenity_query(area, amenity, wikidata_id)
     )
 
     if geometry is not None:
-        logger.info("QLever: fuel station found at %s", geometry.centroid.coords[0])
+        logger.info("QLever: %s found at %s", amenity, geometry.centroid.coords[0])
     return geometry
