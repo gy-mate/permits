@@ -23,6 +23,8 @@ metadata:
   namespace: permits
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # Tear down old pods before starting new ones until the DB schema is finalized: migrations may render old pods unusable
   selector:
     matchLabels:
       app: permits-backend

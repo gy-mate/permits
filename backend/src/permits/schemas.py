@@ -27,8 +27,8 @@ class PermitOut(BaseModel):
     usage_type: str
     occupied_area_in_square_metres: int | None
     
-    time_from: dt.datetime | None
-    time_to: dt.datetime | None
+    time_from: dt.datetime
+    time_to: dt.datetime
 
 
 class CoveragePoint(BaseModel):

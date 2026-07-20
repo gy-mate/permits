@@ -2,15 +2,16 @@
 
 Each new permit is enriched and committed on its own, immediately, so progress is
 never lost: an enrichment lookup that keeps failing past its tenacity budget only
-skips that one permit instead of aborting the whole run. Only rows whose
-``reference_number`` is not already stored are imported (the column's unique key is
-the dedup boundary). A *no match* (empty enrichment result) is not a failure — the
+skips that one permit instead of aborting the whole run. Only rows whose parsed
+reference number (department, main/sub registration numbers and year) is not already
+stored are imported. A *no match* (empty enrichment result) is not a failure — the
 corresponding field is simply left ``NULL``.
 """
 
 import asyncio
 import datetime as dt
 import logging
+import re
 
 from geoalchemy2.shape import from_shape
 from shapely.geometry.base import BaseGeometry
@@ -30,9 +31,55 @@ from permits.usage_types import UsageType, translate_purpose
 logger = logging.getLogger("permits.fetch")
 
 CITY_WIKIDATA_ID = wikidata.BUDAPEST_QID
+LOCAL_AUTHORITY_ID = "FPH"  # Budapest City Council (FőPolgármesteri Hivatal)
 NATURAL_PERSON_MARKER = "Magánszemély"
+REFERENCE_NUMBER_PATTERN = re.compile(r"(\d+)-(\d*)/(\d+)/(\d+)")
 PROGRESS_BAR_REFRESH_SECONDS = 30
 OSM_MATCH_BUFFER_METRES = 5  # If the OSM node lies just outside the land plot
+
+
+def parse_reference_number(
+    raw: str, time_from: dt.datetime
+) -> tuple[int, int | None, int, int] | None:
+    """Split e.g. '58-2712/4/25' into department, 
+    main/sub registration number and full year (2025).
+
+    The main registration number may be absent by accident (e.g. '58-/2/25'), 
+    yielding ``None`` for it. The century of the two-digit year 
+    is inferred from ``time_from``. Returns ``None`` when 
+    ``raw`` does not match the expected format.
+    """
+
+    match = REFERENCE_NUMBER_PATTERN.fullmatch(raw)
+    if match is None:
+        return None
+
+    department, main, sub, year = (int(group) if group else None for group in match.groups())
+    if year < 100:
+        year += (time_from.year // 100) * 100
+
+    return department, main, sub, year
+
+
+def reference_key(
+    row: dict, timezone: str | None
+) -> tuple[str, int, int | None, int, int] | None:
+    """The dedup key of a raw row: city + parsed reference number, or ``None``
+    when the reference number is missing or unparseable, 
+    or when the row has no start date 
+    to infer the century from.
+    """
+
+    raw = (row.get("regNum") or "").strip()
+    time_from = tz.day_start(row.get("startOfUse"), timezone)
+    if not raw or time_from is None:
+        return None
+
+    parts = parse_reference_number(raw, time_from)
+    if parts is None:
+        return None
+
+    return (CITY_WIKIDATA_ID, *parts)
 
 
 def to_int(value: str | None) -> int | None:
@@ -132,12 +179,18 @@ async def existing_client_qids(session: AsyncSession) -> dict[str, str]:
     return {client: qid for client, qid in rows}
 
 
-async def get_or_create_hu(session: AsyncSession, city_wikidata_id: str, ksh_code: str) -> HU:
+async def get_or_create_hu(
+    session: AsyncSession, city_wikidata_id: str, ksh_code: str, local_authority_id: str
+) -> HU:
     """Ensure the local.hu row for this city exists, returning it."""
 
-    hu = await session.get(HU, city_wikidata_id)
+    hu = await session.scalar(select(HU).where(HU.city_wikidata_id == city_wikidata_id))
     if hu is None:
-        hu = HU(city_wikidata_id=city_wikidata_id, ksh_code=ksh_code)
+        hu = HU(
+            city_wikidata_id=city_wikidata_id,
+            ksh_code=ksh_code,
+            local_authority_id=local_authority_id,
+        )
         session.add(hu)
         await session.commit()
 
@@ -154,28 +207,43 @@ async def import_permits(session: AsyncSession) -> int:
         rows = await budapest.fetch_rows(client)
         logger.info("Fetched %d raw rows.", len(rows))
 
-        existing = set(
-            (await session.scalars(select(Permit.reference_number))).all()
-        )
+        existing = {
+            tuple(row)
+            for row in await session.execute(
+                select(
+                    Permit.city_wikidata_id,
+                    Permit.department_id,
+                    Permit.main_registration_number,
+                    Permit.sub_registration_number,
+                    Permit.year_number,
+                )
+            )
+        }
         logger.info("Database already holds %d permits.", len(existing))
 
         logger.info("Resolving city metadata (KSH code, timezone) from Wikidata…")
         ksh_code = await wikidata.ksh_code(client, CITY_WIKIDATA_ID)
         timezone = await wikidata.iana_timezone(client, CITY_WIKIDATA_ID)
         logger.info("City KSH code=%s, timezone=%s.", ksh_code, timezone)
-        await get_or_create_hu(session, CITY_WIKIDATA_ID, ksh_code)
+        await get_or_create_hu(session, CITY_WIKIDATA_ID, ksh_code, LOCAL_AUTHORITY_ID)
 
         # Seed the client→QID cache with names already resolved in the DB, so recurring
         # clients reuse the stored id instead of re-querying Wikidata
         client_qid_cache: dict[str, str | None] = await existing_client_qids(session)
         logger.info("Reusing %d known client Wikidata id(s).", len(client_qid_cache))
 
-        new_rows = [
-            row
-            for row in rows
-            if (row.get("regNum") or "").strip()
-            and (row.get("regNum") or "").strip() not in existing
-        ]
+        new_rows = []
+        for row in rows:
+            key = reference_key(row, timezone)
+
+            if key is None:
+                raw = (row.get("regNum") or "").strip()
+                if raw:
+                    logger.warning("Cannot parse reference number %r; skipping row.", raw)
+                continue
+
+            if key not in existing:
+                new_rows.append(row)
         logger.info("%d of %d rows are new and will be imported.", len(new_rows), len(rows))
 
         inserted = 0
@@ -189,9 +257,12 @@ async def import_permits(session: AsyncSession) -> int:
 
         for row in progress:
             reference_number = (row.get("regNum") or "").strip()
-            if reference_number in existing:
+
+            key = reference_key(row, timezone)
+            if key in existing:
                 continue
-            existing.add(reference_number)
+
+            existing.add(key)
 
             try:
                 permit = await build_permit(
@@ -228,6 +299,16 @@ async def build_permit(
     reference_number = (row.get("regNum") or "").strip()
     logger.debug("Enriching permit %s…", reference_number)
 
+    time_from = tz.day_start(row.get("startOfUse"), timezone)
+    time_to = tz.day_start(row.get("endOfUse"), timezone)
+    if time_from is None or time_to is None:
+        raise ValueError(f"Permit {reference_number} has no start or end date.")
+
+    parts = parse_reference_number(reference_number, time_from)
+    if parts is None:
+        raise ValueError(f"Cannot parse reference number {reference_number!r}.")
+    department, main, sub, year = parts
+
     requester = (row.get("anonymizedRequester") or "").strip()
     is_natural_person = requester == NATURAL_PERSON_MARKER
     client_name = None if is_natural_person else (correct_client(requester) or None)
@@ -251,7 +332,10 @@ async def build_permit(
     return Permit(
         queried_at=queried_at,
         city_wikidata_id=CITY_WIKIDATA_ID,
-        reference_number=reference_number,
+        department_id=department,
+        main_registration_number=main,
+        sub_registration_number=sub,
+        year_number=year,
         client_is_natural_person=is_natural_person,
         client=client_name,
         client_wikidata_id=client_qid,
@@ -260,8 +344,8 @@ async def build_permit(
         location=from_shape(geometry, srid=4326) if geometry else None,
         usage_type=usage_type,
         occupied_area_in_square_metres=to_int(row.get("size")),
-        time_from=tz.day_start(row.get("startOfUse"), timezone),
-        time_to=tz.day_start(row.get("endOfUse"), timezone),
+        time_from=time_from,
+        time_to=time_to,
     )
 
 

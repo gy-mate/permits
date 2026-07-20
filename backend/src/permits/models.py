@@ -32,17 +32,21 @@ class HU(Base):
     """A Hungarian settlement, keyed by its Wikidata id and holding its KSH code."""
 
     __tablename__ = "hu"
-    __table_args__ = {"schema": LOCAL_SCHEMA}
+    __table_args__ = (
+        UniqueConstraint("city_wikidata_id", name="uq_hu_city_wikidata_id"),
+        {"schema": LOCAL_SCHEMA},
+    )
 
-    city_wikidata_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    city_wikidata_id: Mapped[str] = mapped_column(Text, nullable=False)
     ksh_code: Mapped[str] = mapped_column(Text, nullable=False)
+    local_authority_id: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class Permit(Base):
     """A single public-space-use permit, enriched with geometry + identity."""
 
     __tablename__ = "permits"
-    __table_args__ = (UniqueConstraint("reference_number", name="uq_permits_reference_number"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     queried_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -53,7 +57,10 @@ class Permit(Base):
     )
     hu: Mapped[HU] = relationship(lazy="joined")
 
-    reference_number: Mapped[str] = mapped_column(Text, nullable=False)
+    department_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    main_registration_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sub_registration_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    year_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
     client_is_natural_person: Mapped[bool] = mapped_column(Boolean, nullable=False)
     client: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -72,5 +79,5 @@ class Permit(Base):
     )
     occupied_area_in_square_metres: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    time_from: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    time_to: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    time_from: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    time_to: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

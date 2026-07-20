@@ -17,6 +17,19 @@ from permits.schemas import CoveragePoint, PermitOut, PermitsCoverage
 router = APIRouter()
 
 
+def format_reference_number(permit: Permit) -> str:
+    """Build the official display form, e.g. 'FPH058/2712-4/2025'."""
+
+    department = f"{permit.department_id:03d}" if permit.department_id is not None else ""
+    main = permit.main_registration_number if permit.main_registration_number is not None else "?"
+
+    return (
+        f"{permit.hu.local_authority_id}{department}"
+        f"/{main}-{permit.sub_registration_number}"
+        f"/{permit.year_number}"
+    )
+
+
 def serialize(permit: Permit) -> PermitOut:
     geometry = mapping(to_shape(permit.location)) if permit.location is not None else None
 
@@ -25,7 +38,7 @@ def serialize(permit: Permit) -> PermitOut:
         queried_at=permit.queried_at,
         city_wikidata_id=permit.city_wikidata_id,
         city_ksh_code=permit.hu.ksh_code,
-        reference_number=permit.reference_number,
+        reference_number=format_reference_number(permit),
         client_is_natural_person=permit.client_is_natural_person,
         client=permit.client,
         client_wikidata_id=permit.client_wikidata_id,
@@ -100,13 +113,9 @@ async def permits_coverage(session: AsyncSession = Depends(get_session)) -> Perm
 
     # Sweep line: +1 on the day a permit takes effect, -1 on the day it ends
     # (time_to is exclusive, matching list_permits). The running total over the
-    # change days is the count of permits in effect from each day onward.
-    starts = select(
-        cast(Permit.time_from, Date).label("day"), literal(1).label("delta")
-    ).where(Permit.time_from.isnot(None))
-    ends = select(
-        cast(Permit.time_to, Date).label("day"), literal(-1).label("delta")
-    ).where(Permit.time_to.isnot(None))
+    # change days is the count of permits in effect from each day onward
+    starts = select(cast(Permit.time_from, Date).label("day"), literal(1).label("delta"))
+    ends = select(cast(Permit.time_to, Date).label("day"), literal(-1).label("delta"))
     events = union_all(starts, ends).subquery()
     daily = (
         select(events.c.day, func.sum(events.c.delta).label("delta"))
