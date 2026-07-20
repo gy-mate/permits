@@ -42,6 +42,43 @@ def test_extract_conscription_number_variants():
     assert extract_conscription_number("nothing here") is None
 
 
+def test_extract_conscription_number_parenthesised_before_keyword():
+    place = (
+        "11. ker. Gazdagréti út Rétköz utca 10-12. szám előtt "
+        "(a Kaptató sétány és Rétköz utca közötti parkolóban) (1918/10) hrsz"
+    )
+
+    assert extract_conscription_number(place) == "1918/10"
+
+
+def test_extract_conscription_number_drops_sub_parcel_letter():
+    place = (
+        "kikötő, Infopark (Petőfi híd - Rákóczi híd) XI/109-111 raszter vonalában, "
+        "4082/32b hrsz. (Buda 12)"
+    )
+
+    assert extract_conscription_number(place) == "4082/32"
+
+
+def test_extract_conscription_number_without_keyword():
+    assert (
+        extract_conscription_number(
+            "11. ker. Goldmann György tér felszínen villamos peronnál "
+            "4107/53 vagyonkezelt terület"
+        )
+        == "4107/53"
+    )
+    assert (
+        extract_conscription_number("Budapest XIII/5-6 raszter vonalában 25123/11")
+        == "25123/11"
+    )
+
+
+def test_extract_conscription_number_ignores_house_and_raster_numbers():
+    assert extract_conscription_number("2. ker. Fő utca 12/1. szám előtt") is None
+    assert extract_conscription_number("Budapest XIII/5-6 raszter vonalában") is None
+
+
 def test_parse_address_variants():
     assert parse_address("8. ker. Múzeum körút 10. szám előtti járdán") == (
         "Múzeum körút",

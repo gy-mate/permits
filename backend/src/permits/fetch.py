@@ -97,9 +97,8 @@ async def resolve_location(
 ) -> BaseGeometry | None:
     """OENY parcel geometry by conscription number, else QLever address geocode."""
 
-    number = conscription_number or extract_conscription_number(place)
-    if number:
-        parcel_id = await oeny.find_parcel_id(client, ksh_code, number)
+    if conscription_number:
+        parcel_id = await oeny.find_parcel_id(client, ksh_code, conscription_number)
         if parcel_id is not None:
             geometry = await oeny.parcel_geometry(client, parcel_id)
             if geometry is not None:
@@ -321,8 +320,11 @@ async def build_permit(
             )
         client_qid = client_qid_cache[client_name]
 
-    conscription_number = (row.get("parcelNum") or "").strip() or None
     place = (row.get("place") or "").strip() or None
+    conscription_number = (
+        row.get("parcelNum") or ""
+    ).strip() or extract_conscription_number(place)
+
     usage_type = translate_purpose(row.get("purposeOfUse"))
 
     geometry = await resolve_location(client, ksh_code, conscription_number, place)

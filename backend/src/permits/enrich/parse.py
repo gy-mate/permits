@@ -16,10 +16,24 @@ prefer to reuse the exact OENY parcel-geometry path over fuzzy geocoding.
 import re
 
 # A conscription number embedded as "hrsz" — value may precede or follow the keyword,
-# optionally parenthesised, e.g. "hrsz. (23800/8)", "hrsz: 155563", "38017/7 hrsz."
+# optionally parenthesised, e.g. "hrsz. (23800/8)", "hrsz: 155563", "38017/7 hrsz.",
+# "(1918/10) hrsz". A trailing letter ("4082/32b") is a sub-parcel marker,
+# so it's matched but left out of the captured number
 NUMBER = r"\d+(?:/\d+)?"
+SUB_PARCEL = r"[a-z]?"
 CONSCRIPTION_AFTER = re.compile(rf"hrsz\.?:?\s*\(?\s*(?P<num>{NUMBER})", re.IGNORECASE)
-CONSCRIPTION_BEFORE = re.compile(rf"(?P<num>{NUMBER})\s*hrsz", re.IGNORECASE)
+CONSCRIPTION_BEFORE = re.compile(
+    rf"(?P<num>{NUMBER}){SUB_PARCEL}\s*\)?\s*hrsz", re.IGNORECASE
+)
+
+# Some rows name the parcel without the "hrsz" keyword, e.g. "…villamos peronnál
+# 4107/53 vagyonkezelt terület". Matching a bare number is only safe when it is
+# unmistakably a parcel: the slashed form, with at least four leading digits. That keeps
+# out house numbers ("12/1.") and raster references ("XIII/5-6", "XI/109-111")
+BARE_NUMBER = r"\d{4,}/\d+"
+CONSCRIPTION_BARE = re.compile(
+    rf"(?<![\w/])(?P<num>{BARE_NUMBER}){SUB_PARCEL}(?![\w/])", re.IGNORECASE
+)
 
 # Street + house number, anchored on the "sz."/"szám" that follows the number.
 # Street is everything after an optional "<N>. ker." up to that number
@@ -37,7 +51,11 @@ def extract_conscription_number(place: str | None) -> str | None:
     if not place:
         return None
 
-    match = CONSCRIPTION_AFTER.search(place) or CONSCRIPTION_BEFORE.search(place)
+    match = (
+        CONSCRIPTION_AFTER.search(place)
+        or CONSCRIPTION_BEFORE.search(place)
+        or CONSCRIPTION_BARE.search(place)
+    )
     if not match:
         return None
 
