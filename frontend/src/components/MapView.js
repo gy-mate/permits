@@ -1,4 +1,5 @@
-import maplibregl from 'maplibre-gl'
+import { AttributionControl, Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -11,6 +12,8 @@ import { bboxCenter, bboxContains, bufferBbox, pixelSize } from '../geometry'
 import { useFiltersStore } from '../stores/filters'
 import { usageColor } from '../usageCategories'
 import { usageLabel } from '../usageTypes'
+
+setWorkerUrl(workerUrl)  // MapLibre v6 leaves worker hosting to the bundler
 
 const BUDAPEST_CITY_HALL_COORDINATES = [19.0567, 47.4969]
 const BUDAPEST_CITY_HALL_ZOOM = 15
@@ -327,7 +330,7 @@ export default {
     }
 
     function addAttributionControl() {
-      attributionControl = new maplibregl.AttributionControl({
+      attributionControl = new AttributionControl({
         compact: true,
         customAttribution: t('attribution'),
       })
@@ -337,14 +340,14 @@ export default {
     onMounted(async () => {
       const view = loadSavedView()
 
-      map = new maplibregl.Map({
+      map = new MapLibreMap({
         container: container.value,
         style: await styledMap(),
         center: view.center,
         zoom: view.zoom,
         attributionControl: false,
       })
-      map.addControl(new maplibregl.NavigationControl(), 'top-left')
+      map.addControl(new NavigationControl(), 'top-left')
       addAttributionControl()
 
       map.on('load', () => {
