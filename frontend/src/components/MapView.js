@@ -9,7 +9,9 @@ import { bbox } from '@turf/bbox'
 import { fetchPermits } from '../api'
 import { loadStyle } from '../composables/useMapStyle'
 import { bboxCenter, bboxContains, bufferBbox, pixelSize } from '../geometry'
+import { splitByCoverage } from '../overlaps'
 import { useFiltersStore } from '../stores/filters'
+import { FILL_OPACITY, stripeAngle, stripePatternId, stripePatternImage } from '../stripePattern'
 import { usageColor } from '../usageCategories'
 import { usageLabel } from '../usageTypes'
 
@@ -19,8 +21,9 @@ const BUDAPEST_CITY_HALL_COORDINATES = [19.0567, 47.4969]
 const BUDAPEST_CITY_HALL_ZOOM = 15
 const SMALL_PX = 40  // Below this on-screen size a permit is drawn as a point
 const BUFFER_FACTOR = 1  // Fetch a bbox this many viewport-widths larger on each side
-const INTERACTIVE_LAYERS = ['permit-fill', 'permit-point', 'permit-cluster']
+const INTERACTIVE_LAYERS = ['permit-fill', 'permit-overlap', 'permit-point', 'permit-cluster']
 const VIEW_STORAGE_KEY = 'permits.mapView'  // Persisted center/zoom across reloads
+const POLYGON_TYPES = new Set(['Polygon', 'MultiPolygon'])
 
 function emptyFC() {
   return { type: 'FeatureCollection', features: [] }
@@ -72,6 +75,8 @@ export default {
 
     let map = null
     let permits = []  // Raw permit objects for the current loaded bbox
+    let boxes = new Map()  // Permit ID → geometry bbox; see indexPermits()
+    let coverage = []  // `permits` cut into disjoint fill cells; see indexPermits()
     let loadedBbox = null
     let abort = null
 
@@ -123,10 +128,68 @@ export default {
       return true
     }
 
+    // Register the striped pattern for a colour combination the first time it is needed
+    // (the style keeps images across rebuilds, but drops them on a setStyle())
+    function stripePattern(colors, angle) {
+      const id = stripePatternId(colors, angle)
+
+      if (!map.hasImage(id)) {
+        const { image, pixelRatio } = stripePatternImage(colors, angle)
+        map.addImage(id, image, { pixelRatio })
+      }
+
+      return id
+    }
+
+    // Everything derived from the permits' geometry rather than from the current view.
+    // Cutting the areas into disjoint cells — so an overlap is painted once, striped
+    // with the colours of every permit covering it, instead of stacking translucent
+    // fills — is by far the most expensive step on the map, and redoing it on every
+    // zoom would stall it. Both results hold until the permits are refetched
+    function indexPermits() {
+      boxes = new Map(
+        permits
+          .filter((permit) => permit.location)
+          .map((permit) => [permit.id, bbox(permit.location)]),
+      )
+      coverage = splitByCoverage(
+        permits
+          .filter((permit) => POLYGON_TYPES.has(permit.location?.type))
+          .map((permit) => ({ id: permit.id, geometry: permit.location })),
+      ).map((cell) => ({ ...cell, angle: stripeAngle(cell.geometry) }))
+    }
+
+    // Turn the cells into fill features for the permits currently drawn as areas. Cells
+    // are cut for every loaded permit, so the ids of those filtered out — or small
+    // enough to be drawn as a point — are dropped here rather than by recutting
+    function coverageCells(colorById) {
+      const features = []
+
+      for (const { geometry, ids, angle } of coverage) {
+        const shown = ids.filter((id) => colorById.has(id))
+
+        if (!shown.length) {
+          continue
+        }
+
+        const colors = [...new Set(shown.map((id) => colorById.get(id)))]
+        const properties = { ids: JSON.stringify(shown), color: colors[0] }
+
+        if (shown.length > 1) {
+          properties.pattern = stripePattern(colors, angle)
+        }
+
+        features.push({ type: 'Feature', geometry, properties })
+      }
+
+      return features
+    }
+
     // Split the loaded permits into large polygons and small/point features
     function buildSources() {
       const polygons = []
       const points = []
+      const colorById = new Map()  // Permits drawn as areas, so their cells get filled
 
       const viewportMin = Math.min(
         container.value.clientWidth,
@@ -139,11 +202,12 @@ export default {
         }
 
         const color = usageColor(permit.usage_type)
-        const bbox_value = bbox(permit.location)
+        const bbox_value = boxes.get(permit.id)
         const px = pixelSize(map, bbox_value)
-        const isPolygon = permit.location.type !== 'Point'
+        const isPolygon = POLYGON_TYPES.has(permit.location.type)  // Only true areas can be cut against each other, so anything else falls through to the point branch below
 
         if (isPolygon && px >= SMALL_PX) {
+          colorById.set(permit.id, color)
           polygons.push({
             type: 'Feature',
             geometry: permit.location,
@@ -160,6 +224,10 @@ export default {
 
       map.getSource('permit-polygons')?.setData({ type: 'FeatureCollection', features: polygons })
       map.getSource('permit-points')?.setData({ type: 'FeatureCollection', features: points })
+      map.getSource('permit-areas')?.setData({
+        type: 'FeatureCollection',
+        features: coverageCells(colorById),
+      })
     }
 
     // Idempotent: setStyle() (on a dark-mode switch) drops our sources/layers, so this
@@ -170,6 +238,7 @@ export default {
       }
 
       map.addSource('permit-polygons', { type: 'geojson', data: emptyFC() })
+      map.addSource('permit-areas', { type: 'geojson', data: emptyFC() })  // The polygons cut into disjoint cells: the fills, unlike the outlines and labels, have to know which permits cover each patch
       map.addSource('permit-points', {
         type: 'geojson',
         data: emptyFC(),
@@ -180,8 +249,16 @@ export default {
       map.addLayer({
         id: 'permit-fill',
         type: 'fill',
-        source: 'permit-polygons',
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.45 },
+        source: 'permit-areas',
+        filter: ['!', ['has', 'pattern']],
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': FILL_OPACITY },
+      })
+      map.addLayer({
+        id: 'permit-overlap',
+        type: 'fill',
+        source: 'permit-areas',
+        filter: ['has', 'pattern'],
+        paint: { 'fill-pattern': ['image', ['get', 'pattern']] },  // The tile is already translucent where the stripes are; its separators are meant to stay opaque black
       })
       map.addLayer({
         id: 'permit-outline',
@@ -253,7 +330,7 @@ export default {
           continue
         }
 
-        const [aX, aY, bX, bY] = bbox(permit.location)
+        const [aX, aY, bX, bY] = boxes.get(permit.id)
 
         if (aX < minX) minX = aX
         if (aY < minY) minY = aY
@@ -295,6 +372,7 @@ export default {
           signal: abort.signal,
         })
         loadedBbox = queryBbox
+        indexPermits()
         buildSources()
       } catch (error) {
         if (error.name !== 'AbortError') {
@@ -317,9 +395,16 @@ export default {
         return
       }
 
-      const permit = permits.find((p) => p.id === feature.properties.id)
-      if (permit) {
-        emit('select', permit)
+      // A fill cell carries every permit covering it, so clicking an overlap selects all of them at once; points always stand for a single permit
+      const ids = feature.properties.ids
+        ? JSON.parse(feature.properties.ids)
+        : [feature.properties.id]
+      const selected = ids
+        .map((id) => permits.find((permit) => permit.id === id))
+        .filter(Boolean)
+
+      if (selected.length) {
+        emit('select', selected)
       }
     }
 

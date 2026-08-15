@@ -1,19 +1,24 @@
+import { reactive } from 'vue'
+
 const ENTITY_URL = 'https://www.wikidata.org/wiki/Special:EntityData'
 
-const cache = new Map()
+export const logoUrls = reactive({})  // Wikidata ID → Wikimedia Commons logo URL
 
-// Fetches a client's logo image (Wikidata P154) on demand, 
-// returning a Wikimedia Commons image URL or null
-export async function fetchWikimediaCommonsLogoUrl(wikidataId) {
-  if (!wikidataId) {
-    return null
+const inFlight = new Set()
+
+export function loadLogoUrl(wikidataId) {
+  if (!wikidataId || wikidataId in logoUrls || inFlight.has(wikidataId)) {
+    return
   }
 
-  if (cache.has(wikidataId)) {
-    return cache.get(wikidataId)
-  }
+  inFlight.add(wikidataId)
+  fetchWikimediaCommonsLogoUrl(wikidataId).then((url) => {
+    logoUrls[wikidataId] = url
+    inFlight.delete(wikidataId)
+  })
+}
 
-  let url = null
+async function fetchWikimediaCommonsLogoUrl(wikidataId) {
   try {
     const response = await fetch(`${ENTITY_URL}/${wikidataId}.json`)
     if (response.ok) {
@@ -22,16 +27,14 @@ export async function fetchWikimediaCommonsLogoUrl(wikidataId) {
 
       const filename = claims?.P154?.[0]?.mainsnak?.datavalue?.value
       if (filename) {
-        url = commonsThumbnailUrl(filename)
+        return commonsThumbnailUrl(filename)
       }
     }
   } catch {
-    url = null
+    return null
   }
 
-  cache.set(wikidataId, url)
-
-  return url
+  return null
 }
 
 function commonsThumbnailUrl(filename) {

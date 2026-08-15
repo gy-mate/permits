@@ -12,7 +12,7 @@ export default {
   setup() {
     const filters = useFiltersStore()
     const { t } = useI18n()
-    const selectedPermit = ref(null)
+    const selectedPermits = ref([])
 
     // Keep the document title localized
     watchEffect(() => {
@@ -34,14 +34,14 @@ export default {
       document.documentElement.classList.toggle('dark', filters.darkMode)
     })
 
-    function onSelect(permit) {
-      selectedPermit.value = permit
+    function onSelect(permits) {
+      selectedPermits.value = permits
     }
 
     function clearSelection() {
-      selectedPermit.value = null
+      selectedPermits.value = []
     }
 
-    return { filters, selectedPermit, onSelect, clearSelection }
+    return { filters, selectedPermits, onSelect, clearSelection }
   },
 }

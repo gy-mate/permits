@@ -49,6 +49,10 @@ html.dark .subtypes {
   border-left-color: #3c4043;
 }
 
+html.dark .permit + .permit {
+  border-top-color: #3c4043;
+}
+
 html.dark .expand {
   color: #9aa0a6;
 }

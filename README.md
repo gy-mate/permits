@@ -327,8 +327,17 @@ Features:
 - Geometries coloured by `usage_type`; large polygons get the **client name** label
   (or the **permit type** for natural persons); too-small extents become **circles**,
   and dense circles collapse into a **counter** marker (cluster).
+- **Overlapping permits**: the areas are cut into disjoint cells, so an overlap is
+  painted once rather than as stacked translucent fills. A shared patch is filled with
+  **diagonal stripes** alternating the usage colours covering it, divided by thin black
+  lines so neighbouring stripes stay apart even when their colours match. The stripes
+  take whichever diagonal cuts across the patch — **315°** when its edges mostly run at a
+  0°–90° bearing, **45°** otherwise — so they never run parallel to the outline and read
+  as lines. The cut depends on the permits alone, so it is computed once per fetch and
+  reused while panning/zooming.
 - **Legend** + **type/client filters** (persisted automatically via pinia + localStorage).
-- **Click** a permit → all fields + the client's **logo (Wikidata P154)** when available.
+- **Click** a permit → all fields + the client's **logo (Wikidata P154)** when available;
+  clicking a striped overlap lists **every permit** covering it in one panel.
 - **Timeline** (date resolution, logarithmic scale) drags back to the earliest
   in-effect date; opening it **queries all dates**, and dates **before the earliest
   `queried_at`** are flagged (and coloured) as partial.

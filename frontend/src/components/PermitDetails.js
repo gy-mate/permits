@@ -1,37 +1,37 @@
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { usageColor } from '../usageCategories'
 import { usageLabel } from '../usageTypes'
-import { fetchWikimediaCommonsLogoUrl } from '../wikidata'
+import { logoUrls, loadLogoUrl } from '../wikidata'
 
 export default {
-  props: { permit: { type: Object, required: true } },
+  props: { permits: { type: Array, required: true } },
   emits: ['close'],
   setup(props) {
     const { t, locale } = useI18n()
-    const logoUrl = ref(null)
 
-    const usageLabelText = computed(() =>
-      usageLabel(props.permit.usage_type, locale.value),
+    const title = computed(() =>
+      props.permits.length === 1
+        ? props.permits[0].reference_number  // A single permit keeps its reference number as the heading
+        : t('overlappingPermits', { count: props.permits.length }),  // Overlapping ones' heading shows a count of those permits
     )
+
+    function usageLabelText(permit) {
+      return usageLabel(permit.usage_type, locale.value)
+    }
 
     function formatDate(value) {
       return value ? new Date(value).toLocaleDateString(locale.value) : '—'
     }
 
-    // Fetch the client's logo (Wikidata P154) whenever the selected permit changes
+    // Fetch each client's logo (Wikidata P154) whenever the selection changes
     watch(
-      () => props.permit.id,
-      async () => {
-        logoUrl.value = null
-        if (props.permit.client_wikidata_id) {
-          logoUrl.value = await fetchWikimediaCommonsLogoUrl(props.permit.client_wikidata_id)
-        }
-      },
+      () => props.permits.map((permit) => permit.id).join(),
+      () => props.permits.forEach((permit) => loadLogoUrl(permit.client_wikidata_id)),
       { immediate: true },
     )
 
-    return { t, logoUrl, usageLabelText, usageColor, formatDate }
+    return { t, title, logoUrls, usageLabelText, usageColor, formatDate }
   },
 }

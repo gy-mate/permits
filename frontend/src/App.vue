@@ -6,8 +6,8 @@
 
     <ControlsPanel />
     <PermitDetails
-      v-if="selectedPermit"
-      :permit="selectedPermit"
+      v-if="selectedPermits.length"
+      :permits="selectedPermits"
       @close="clearSelection"
     />
     
