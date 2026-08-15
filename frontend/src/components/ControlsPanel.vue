@@ -1,4 +1,4 @@
-<script src="./ControlsPanel.js"></script>
+<script lang="ts" src="./ControlsPanel.ts"></script>
 
 <template>
   <aside class="panel" :class="{ collapsed, 'filters-active': filtersActive }">

@@ -1,4 +1,4 @@
-<script src="./PermitDetails.js"></script>
+<script lang="ts" src="./PermitDetails.ts"></script>
 
 <template>
   <section class="details">
@@ -11,8 +11,8 @@
       <h3 v-if="permits.length > 1">{{ permit.reference_number }}</h3>
 
       <img
-        v-if="logoUrls[permit.client_wikidata_id]"
-        :src="logoUrls[permit.client_wikidata_id]"
+        v-if="logoUrl(permit)"
+        :src="logoUrl(permit)"
         :alt="permit.client ?? ''"
         class="logo"
       />

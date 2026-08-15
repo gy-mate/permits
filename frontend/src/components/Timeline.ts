@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineComponent, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { fetchCoverage } from '../api'
@@ -10,28 +10,43 @@ const STEPS = 1000
 // start to overlap. Roughly a 4-digit label's width on the narrowest layout
 const MIN_LABEL_GAP = 7
 
-export default {
+// A change point in the in-effect-permit count, with its date already normalized to
+// local midnight so it lines up with the slider's day boundaries
+interface HistogramPoint {
+  date: Date
+  count: number
+}
+
+interface YearTick {
+  year: number
+  left: number
+  showText: boolean
+}
+
+export default defineComponent({
   setup() {
     const { t } = useI18n()
     const filters = useFiltersStore()
 
-    const earliestInEffectDate = ref(null)
-    const latestInEffectDate = ref(null)
+    const earliestInEffectDate = ref<Date | null>(null)
+    const latestInEffectDate = ref<Date | null>(null)
 
-    const earliestQueried = ref(null)  // before this, past data is partial
-    const histogram = ref([])  // [{ date: Date, count }] step function of in-effect permits
+    const earliestQueried = ref<Date | null>(null)  // before this, past data is partial
+    const histogram = ref<HistogramPoint[]>([])  // step function of in-effect permits
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
     const sliderPosition = ref(STEPS)
 
-    const maxDaysAgo = computed(() =>
-      earliestInEffectDate.value ? Math.max(1, Math.round((today - earliestInEffectDate.value) / DAY_MS)) : 1,
-    )
-    const maxDaysAhead = computed(() =>
-      latestInEffectDate.value ? Math.max(0, Math.round((latestInEffectDate.value - today) / DAY_MS)) : 0,
-    )
+    const maxDaysAgo = computed(() => {
+      const earliest = earliestInEffectDate.value
+      return earliest ? Math.max(1, Math.round((today.getTime() - earliest.getTime()) / DAY_MS)) : 1
+    })
+    const maxDaysAhead = computed(() => {
+      const latest = latestInEffectDate.value
+      return latest ? Math.max(0, Math.round((latest.getTime() - today.getTime()) / DAY_MS)) : 0
+    })
 
     // Split the slider between a logarithmic past half and a logarithmic future half,
     // proportional to each side's log-extent. `todayFrac` is where "today" sits
@@ -43,7 +58,7 @@ export default {
     })
 
     // Logarithmic both ways: fine resolution near today, coarser into past and future
-    function positionToDate(pos) {
+    function positionToDate(pos: number): Date {
       const frac = pos / STEPS
       if (frac <= todayFrac.value) {
         const p = todayFrac.value === 0 ? 0 : (todayFrac.value - frac) / todayFrac.value
@@ -57,8 +72,8 @@ export default {
       return new Date(today.getTime() + daysAhead * DAY_MS)
     }
 
-    function dateToFraction(date) {
-      const days = Math.round((date - today) / DAY_MS)
+    function dateToFraction(date: Date): number {
+      const days = Math.round((date.getTime() - today.getTime()) / DAY_MS)
       if (days <= 0) {
         const p = Math.log10(-days + 1) / logPast.value
         return todayFrac.value * (1 - p)
@@ -85,9 +100,14 @@ export default {
         y: 100 - (p.count / peak) * 100,
       }))
 
+      const first = points[0]
+      if (!first) {
+        return ''
+      }
+
       // Start on the baseline under the first change point, then for each point
       // hold the previous height across to its x before stepping to the new height
-      let d = `M ${points[0].x.toFixed(2)} 100`
+      let d = `M ${first.x.toFixed(2)} 100`
       let prevY = 100
       for (const point of points) {
         d += ` L ${point.x.toFixed(2)} ${prevY.toFixed(2)} L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
@@ -99,18 +119,20 @@ export default {
     })
 
     // Year ticks (Jan 1 of each year in range), placed on the logarithmic axis
-    const yearTicks = computed(() => {
-      if (!earliestInEffectDate.value || !latestInEffectDate.value) {
+    const yearTicks = computed<YearTick[]>(() => {
+      const earliest = earliestInEffectDate.value
+      const latest = latestInEffectDate.value
+      if (!earliest || !latest) {
         return []
       }
 
-      const ticks = []
-      const startYear = earliestInEffectDate.value.getFullYear()
-      const endYear = latestInEffectDate.value.getFullYear()
+      const ticks: YearTick[] = []
+      const startYear = earliest.getFullYear()
+      const endYear = latest.getFullYear()
 
       for (let year = startYear; year <= endYear; year++) {
         const date = new Date(year, 0, 1)
-        if (date < earliestInEffectDate.value || date > latestInEffectDate.value) {
+        if (date < earliest || date > latest) {
           continue
         }
         const left = dateToFraction(date) * 100
@@ -129,23 +151,23 @@ export default {
       const lastIdx = ticks.length - 1
       let leftMid = -1
       let rightMid = -1
-      for (let i = 0; i < ticks.length; i++) {
-        if (ticks[i].left <= 50) {
-          leftMid = i
+      for (const [index, tick] of ticks.entries()) {
+        if (tick.left <= 50) {
+          leftMid = index
         }
-        if (rightMid === -1 && ticks[i].left >= 50) {
-          rightMid = i
+        if (rightMid === -1 && tick.left >= 50) {
+          rightMid = index
         }
       }
       const forced = new Set([0, lastIdx, leftMid, rightMid].filter((i) => i >= 0))
 
       let lastLeft = -Infinity
-      for (let i = 0; i < ticks.length; i++) {
-        if (forced.has(i) || ticks[i].left - lastLeft >= MIN_LABEL_GAP) {
-          ticks[i].showText = true
-          lastLeft = ticks[i].left
+      for (const [index, tick] of ticks.entries()) {
+        if (forced.has(index) || tick.left - lastLeft >= MIN_LABEL_GAP) {
+          tick.showText = true
+          lastLeft = tick.left
         } else {
-          ticks[i].showText = false
+          tick.showText = false
         }
       }
 
@@ -156,7 +178,7 @@ export default {
     const selectedIso = computed(() => selected.value.toISOString().slice(0, 10))
 
     const isPartial = computed(
-      () => earliestQueried.value && selected.value < earliestQueried.value,
+      () => !!earliestQueried.value && selected.value < earliestQueried.value,
     )
     const isFuture = computed(() => selected.value > today)
 
@@ -180,23 +202,23 @@ export default {
       try {
         const coverage = await fetchCoverage()
 
-        earliestInEffectDate.value = coverage.earliest_time_from
+        const earliest = coverage.earliest_time_from
           ? new Date(coverage.earliest_time_from)
           : new Date(today.getTime() - 365 * DAY_MS)
-        earliestInEffectDate.value.setHours(0, 0, 0, 0)
-
-        earliestQueried.value = coverage.earliest_queried_at
-          ? new Date(coverage.earliest_queried_at)
-          : null
+        earliest.setHours(0, 0, 0, 0)
+        earliestInEffectDate.value = earliest
 
         // Compare by calendar day: a query timestamp partway through its own day
         // must not make that whole day count as "before the earliest query"
-        if (earliestQueried.value) {
-          earliestQueried.value.setHours(0, 0, 0, 0)
-        }
+        const queried = coverage.earliest_queried_at
+          ? new Date(coverage.earliest_queried_at)
+          : null
+        queried?.setHours(0, 0, 0, 0)
+        earliestQueried.value = queried
 
-        latestInEffectDate.value = coverage.latest_time_to ? new Date(coverage.latest_time_to) : today
-        latestInEffectDate.value.setHours(0, 0, 0, 0)
+        const latest = coverage.latest_time_to ? new Date(coverage.latest_time_to) : today
+        latest.setHours(0, 0, 0, 0)
+        latestInEffectDate.value = latest
 
         histogram.value = (coverage.histogram ?? []).map((point) => {
           const date = new Date(point.date)
@@ -225,4 +247,4 @@ export default {
       close,
     }
   },
-}
+})

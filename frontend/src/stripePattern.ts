@@ -1,3 +1,5 @@
+import type { MultiPolygon } from 'geojson'
+
 // Diagonal stripe patterns for map areas covered by more than one permit: one stripe per
 // distinct usage colour, with a thin black line between every pair of stripes so that
 // neighbouring stripes stay separable even when their colours are identical or similar.
@@ -13,9 +15,16 @@ export const FILL_OPACITY = 0.45
 const PIXEL_RATIO = 2  // Render at 2× so the diagonals stay crisp on HiDPI screens
 const DEGREES = 180 / Math.PI
 
+// The two diagonals a pattern can run along, in degrees
+export type StripeAngle = 45 | 315
+
+// GeoJSON types a position as an open-ended number array; every one reaching this
+// module is a plain [longitude, latitude]
+type LonLat = [number, number]
+
 // MapLibre only tiles a fill pattern seamlessly when both of its dimensions are a power
 // of two, so the tile size — not the stripe width — is the fixed quantity here
-function tileSize(colorCount) {
+function tileSize(colorCount: number): number {
   const ideal = colorCount * STRIPE_WIDTH * Math.SQRT2
   return 2 ** Math.min(9, Math.max(4, Math.round(Math.log2(ideal))))
 }
@@ -25,17 +34,30 @@ function tileSize(colorCount) {
 // an outline whose edges mostly run north-easterly (a bearing between 0° and 90°) is
 // striped at 315°, everything else at 45°. Web Mercator is conformal, so an edge's
 // bearing on the ground is also the angle it is drawn at
-export function stripeAngle(geometry) {
+export function stripeAngle(geometry: MultiPolygon): StripeAngle {
   let northEasterly = 0
   let other = 0
 
   for (const polygon of geometry.coordinates) {
-    for (const ring of polygon) {
-      const cosLatitude = Math.cos(ring[0][1] / DEGREES)  // Longitudes converge towards the poles; bearings would be skewed without this
+    for (const ring of polygon as LonLat[][]) {
+      const first = ring[0]
+
+      if (!first) {
+        continue
+      }
+
+      const cosLatitude = Math.cos(first[1] / DEGREES)  // Longitudes converge towards the poles; bearings would be skewed without this
 
       for (let index = 1; index < ring.length; index += 1) {
-        const east = (ring[index][0] - ring[index - 1][0]) * cosLatitude
-        const north = ring[index][1] - ring[index - 1][1]
+        const previous = ring[index - 1]
+        const current = ring[index]
+
+        if (!previous || !current) {
+          continue
+        }
+
+        const east = (current[0] - previous[0]) * cosLatitude
+        const north = current[1] - previous[1]
 
         const bearing = (Math.atan2(east, north) * DEGREES + 180) % 180  // A line has no head or tail, so opposite bearings are the same direction
 
@@ -52,11 +74,14 @@ export function stripeAngle(geometry) {
 }
 
 // Stable image name for a colour combination and direction, so each pattern is generated only once
-export function stripePatternId(colors, angle) {
+export function stripePatternId(colors: string[], angle: StripeAngle): string {
   return `stripes:${angle}:${colors.join('|')}`
 }
 
-export function stripePatternImage(colors, angle) {
+export function stripePatternImage(
+  colors: string[],
+  angle: StripeAngle,
+): { image: ImageData; pixelRatio: number } {
   const size = tileSize(colors.length)
   // Whole colour cycles per tile: the stripes must divide the tile exactly, otherwise
   // the pattern would visibly jump at the tile seams
@@ -70,7 +95,7 @@ export function stripePatternImage(colors, angle) {
   canvas.width = size * PIXEL_RATIO
   canvas.height = size * PIXEL_RATIO
 
-  const context = canvas.getContext('2d')
+  const context = canvas.getContext('2d')!  // A freshly created canvas always has a 2d context
   context.scale(PIXEL_RATIO, PIXEL_RATIO)
 
   // Rotating by a quarter turn puts the first axis along the stripes' normal: a point
@@ -89,8 +114,12 @@ export function stripePatternImage(colors, angle) {
   context.globalAlpha = FILL_OPACITY
 
   for (let index = -stripes; index <= stripes; index += 1) {
-    context.fillStyle = colors[((index % colors.length) + colors.length) % colors.length]
-    context.fillRect(index * width, from, width, height)
+    const color = colors[((index % colors.length) + colors.length) % colors.length]
+
+    if (color !== undefined) {
+      context.fillStyle = color
+      context.fillRect(index * width, from, width, height)
+    }
   }
 
   // Separators go on last, at full opacity, so each one sits on top of both stripes it

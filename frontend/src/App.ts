@@ -1,18 +1,19 @@
-import { onUnmounted, ref, watchEffect } from 'vue'
+import { defineComponent, onUnmounted, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import type { Permit } from './api'
 import ControlsPanel from './components/ControlsPanel.vue'
 import MapView from './components/MapView.vue'
 import PermitDetails from './components/PermitDetails.vue'
 import Timeline from './components/Timeline.vue'
 import { useFiltersStore } from './stores/filters'
 
-export default {
+export default defineComponent({
   components: { MapView, ControlsPanel, PermitDetails, Timeline },
   setup() {
     const filters = useFiltersStore()
     const { t } = useI18n()
-    const selectedPermits = ref([])
+    const selectedPermits = ref<Permit[]>([])
 
     // Keep the document title localized
     watchEffect(() => {
@@ -22,7 +23,7 @@ export default {
     // Keep the OS color-scheme preference in sync so that the 'system' theme
     // follows the system setting live, without a reload
     const media = window.matchMedia?.('(prefers-color-scheme: dark)')
-    const onSystemChange = (event) => {
+    const onSystemChange = (event: MediaQueryListEvent) => {
       filters.systemDark = event.matches
     }
 
@@ -34,7 +35,7 @@ export default {
       document.documentElement.classList.toggle('dark', filters.darkMode)
     })
 
-    function onSelect(permits) {
+    function onSelect(permits: Permit[]) {
       selectedPermits.value = permits
     }
 
@@ -44,4 +45,4 @@ export default {
 
     return { filters, selectedPermits, onSelect, clearSelection }
   },
-}
+})

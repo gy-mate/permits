@@ -1,27 +1,37 @@
-import { computed, watch } from 'vue'
+import { computed, defineComponent, watch, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import type { Permit } from '../api'
 import { usageColor } from '../usageCategories'
 import { usageLabel } from '../usageTypes'
 import { logoUrls, loadLogoUrl } from '../wikidata'
 
-export default {
-  props: { permits: { type: Array, required: true } },
+export default defineComponent({
+  props: { permits: { type: Array as PropType<Permit[]>, required: true } },
   emits: ['close'],
   setup(props) {
     const { t, locale } = useI18n()
 
     const title = computed(() =>
       props.permits.length === 1
-        ? props.permits[0].reference_number  // A single permit keeps its reference number as the heading
+        ? props.permits[0]?.reference_number  // A single permit keeps its reference number as the heading
         : t('overlappingPermits', { count: props.permits.length }),  // Overlapping ones' heading shows a count of those permits
     )
 
-    function usageLabelText(permit) {
+    // Wikidata IDs are optional, and a logo may not have loaded (or may not exist)
+    function logoUrl(permit: Permit): string | undefined {
+      if (!permit.client_wikidata_id) {
+        return undefined
+      }
+
+      return logoUrls[permit.client_wikidata_id] ?? undefined
+    }
+
+    function usageLabelText(permit: Permit): string {
       return usageLabel(permit.usage_type, locale.value)
     }
 
-    function formatDate(value) {
+    function formatDate(value: string | null): string {
       return value ? new Date(value).toLocaleDateString(locale.value) : '—'
     }
 
@@ -32,6 +42,6 @@ export default {
       { immediate: true },
     )
 
-    return { t, title, logoUrls, usageLabelText, usageColor, formatDate }
+    return { t, title, logoUrl, usageLabelText, usageColor, formatDate }
   },
-}
+})

@@ -1,24 +1,53 @@
 import { area } from '@turf/area'
-import { bbox } from '@turf/bbox'
 import { booleanDisjoint } from '@turf/boolean-disjoint'
 import { difference } from '@turf/difference'
 import { intersect } from '@turf/intersect'
+import type { Feature, FeatureCollection, MultiPolygon, Polygon, Position } from 'geojson'
+
+import { boundingBox, type Bbox } from './geometry'
 
 const MIN_OVERLAP_AREA_IN_SQUARE_METRES = 10  // Intersections below this are floating-point slivers between parcels, not real overlaps
 
-function multiPolygon(coordinates) {
+// MultiPolygon coordinates: every outline below is held in this shape, so single
+// polygons are lifted into it on the way in
+type MultiPolygonCoordinates = Position[][][]
+
+// A permit area on the way in: the id it belongs to and the outline it covers
+export interface PermitArea {
+  id: number
+  geometry: Polygon | MultiPolygon
+}
+
+// A patch of ground and every permit covering it
+interface Patch {
+  coordinates: MultiPolygonCoordinates
+  box: Bbox
+  ids: number[]
+}
+
+export interface CoverageCell {
+  geometry: MultiPolygon
+  ids: number[]
+}
+
+function multiPolygon(coordinates: MultiPolygonCoordinates): MultiPolygon {
   return { type: 'MultiPolygon', coordinates }  // Wrap coordinates into a GeoJSON as turf expects them
 }
 
-function polygonFeature(coordinates) {
+function polygonFeature(coordinates: MultiPolygonCoordinates): Feature<MultiPolygon> {
   return { type: 'Feature', geometry: multiPolygon(coordinates), properties: {} }
 }
 
-function pair(a, b) {
+function pair(
+  a: MultiPolygonCoordinates,
+  b: MultiPolygonCoordinates,
+): FeatureCollection<MultiPolygon> {
   return { type: 'FeatureCollection', features: [polygonFeature(a), polygonFeature(b)] }
 }
 
-function coordinatesOf(clipped) {
+function coordinatesOf(
+  clipped: Feature<Polygon | MultiPolygon> | null,
+): MultiPolygonCoordinates | null {
   if (!clipped) {
     return null
   }
@@ -27,11 +56,11 @@ function coordinatesOf(clipped) {
   return type === 'Polygon' ? [coordinates] : coordinates
 }
 
-function boxesOverlap(a, b) {
+function boxesOverlap(a: Bbox, b: Bbox): boolean {
   return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
 }
 
-function squareMetres(coordinates) {
+function squareMetres(coordinates: MultiPolygonCoordinates): number {
   return area(multiPolygon(coordinates))
 }
 
@@ -39,8 +68,8 @@ function squareMetres(coordinates) {
 // coordinate-identical. Collapsing them up front leaves the clipping below only distinct
 // shapes to cut — on a full Budapest dataset that is two thirds of the polygons gone,
 // and it is never asked to clip a 200-vertex outline against an exact copy of itself.
-function distinctOutlines(areas) {
-  const outlines = new Map()
+function distinctOutlines(areas: PermitArea[]): Patch[] {
+  const outlines = new Map<string, Patch>()
 
   for (const { id, geometry } of areas) {
     const key = JSON.stringify(geometry.coordinates)
@@ -55,7 +84,11 @@ function distinctOutlines(areas) {
     const coordinates =
       geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates
 
-    outlines.set(key, { coordinates, box: bbox(multiPolygon(coordinates)), ids: [id] })
+    outlines.set(key, {
+      coordinates,
+      box: boundingBox(multiPolygon(coordinates)),
+      ids: [id],
+    })
   }
 
   return [...outlines.values()]
@@ -64,28 +97,30 @@ function distinctOutlines(areas) {
 // Group the outlines into clusters that could possibly overlap, so the (comparatively
 // expensive) clipping only ever runs within a cluster. Connected components of the
 // "bounding boxes touch" graph.
-function overlapGroups(outlines) {
-  const grouped = new Array(outlines.length).fill(false)
-  const groups = []
+function overlapGroups(outlines: Patch[]): Patch[][] {
+  const grouped = new Array<boolean>(outlines.length).fill(false)
+  const groups: Patch[][] = []
 
-  for (let start = 0; start < outlines.length; start += 1) {
+  for (const [start, first] of outlines.entries()) {
     if (grouped[start]) {
       continue
     }
 
     grouped[start] = true
-    const group = [start]
+    const group = [first]
 
-    for (let cursor = 0; cursor < group.length; cursor += 1) {
-      for (let other = 0; other < outlines.length; other += 1) {
-        if (!grouped[other] && boxesOverlap(outlines[group[cursor]].box, outlines[other].box)) {
+    // The group grows while it is walked; an array iterator re-reads the length on every
+    // step, so outlines appended here are visited in turn — that is the breadth-first pass
+    for (const outline of group) {
+      for (const [other, candidate] of outlines.entries()) {
+        if (!grouped[other] && boxesOverlap(outline.box, candidate.box)) {
           grouped[other] = true
-          group.push(other)
+          group.push(candidate)
         }
       }
     }
 
-    groups.push(group.map((index) => outlines[index]))
+    groups.push(group)
   }
 
   return groups
@@ -94,12 +129,12 @@ function overlapGroups(outlines) {
 // Overlay one cluster's outlines into disjoint cells. Each outline is cut against the
 // cells accumulated so far: the shared part becomes a cell covered by both, and what is
 // left of either side stays covered by just its own permits.
-function arrange(outlines) {
-  let cells = []
+function arrange(outlines: Patch[]): Patch[] {
+  let cells: Patch[] = []
 
   for (const outline of outlines) {
-    const next = []
-    let rest = outline.coordinates  // The part no existing cell has claimed yet
+    const next: Patch[] = []
+    let rest: MultiPolygonCoordinates | null = outline.coordinates  // The part no existing cell has claimed yet
     let restBox = outline.box
 
     for (const cell of cells) {
@@ -125,19 +160,23 @@ function arrange(outlines) {
       const cellOnly = coordinatesOf(difference(pair(cell.coordinates, rest)))
 
       if (cellOnly) {
-        next.push({ coordinates: cellOnly, box: bbox(multiPolygon(cellOnly)), ids: cell.ids })
+        next.push({
+          coordinates: cellOnly,
+          box: boundingBox(multiPolygon(cellOnly)),
+          ids: cell.ids,
+        })
       }
 
       next.push({
         coordinates: shared,
-        box: bbox(multiPolygon(shared)),
+        box: boundingBox(multiPolygon(shared)),
         ids: [...cell.ids, ...outline.ids],
       })
 
       rest = coordinatesOf(difference(pair(rest, cell.coordinates)))
 
       if (rest) {
-        restBox = bbox(multiPolygon(rest))
+        restBox = boundingBox(multiPolygon(rest))
       }
     }
 
@@ -157,12 +196,12 @@ function arrange(outlines) {
 //
 // The result depends on the permits alone, not on the map view or the active filters,
 // so the caller works it out once per fetch and reuses it while panning and zooming.
-export function splitByCoverage(areas) {
-  const cells = []
+export function splitByCoverage(areas: PermitArea[]): CoverageCell[] {
+  const cells: Patch[] = []
 
   for (const group of overlapGroups(distinctOutlines(areas))) {
     if (group.length === 1) {
-      cells.push(group[0])
+      cells.push(...group)
       continue
     }
 

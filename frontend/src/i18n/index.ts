@@ -1,0 +1,95 @@
+import { createI18n } from 'vue-i18n'
+
+export type Locale = 'hu' | 'en'
+
+const hu = {
+  appTitle: 'Közterület-használati engedélyek',
+  legend: 'Jelmagyarázat',
+  filters: 'Szűrők',
+  filterByType: 'Típus szerint',
+  filterByClient: 'Kérelmező szerint',
+  clientPlaceholder: 'Kérelmező neve…',
+  clearFilters: 'Szűrők törlése',
+  naturalPerson: 'Magánszemély',
+  permitType: 'Engedély típusa',
+  details: 'Részletek',
+  overlappingPermits: '{count} egymást átfedő engedély',
+  referenceNumber: 'Iktatószám',
+  client: 'Kérelmező',
+  usageType: 'Felhasználás típusa',
+  area: 'Elfoglalt terület',
+  squareMetres: 'm²',
+  timeFrom: 'Kezdés',
+  timeTo: 'Befejezés',
+  conscriptionNumber: 'Helyrajzi szám',
+  sourceText: 'Hely',
+  queriedAt: 'Lekérdezve',
+  close: 'Bezárás',
+  timeline: 'Idővonal',
+  openTimeline: 'Időgép',
+  today: 'Ma',
+  partialDataWarning:
+    'Erre a dátumra az adatok hiányosak lehetnek (a legkorábbi lekérdezés előtti időszak)',
+  loading: 'Betöltés…',
+  language: 'Nyelv',
+  theme: 'Téma',
+  darkMode: 'Sötét',
+  lightMode: 'Világos',
+  showAllDates: 'Minden dátum',
+  zoomToPermits: 'Engedélyekre nagyítás',
+  attribution: '© OpenStreetMap-közreműködők',
+  futureDataWarning:
+    'Erre a jövőbeli dátumra az adatok hiányosak (új engedélyeket adhatnak ki addig)',
+}
+
+// Hungarian is the reference set of keys; every other locale has to match it exactly
+type MessageSchema = typeof hu
+
+const en: MessageSchema = {
+  appTitle: 'Public space use permits',
+  legend: 'Legend',
+  filters: 'Filters',
+  filterByType: 'By type',
+  filterByClient: 'By client',
+  clientPlaceholder: 'Client name…',
+  clearFilters: 'Clear filters',
+  naturalPerson: 'Natural person',
+  permitType: 'Permit type',
+  details: 'Details',
+  overlappingPermits: '{count} overlapping permits',
+  referenceNumber: 'Reference number',
+  client: 'Client',
+  usageType: 'Usage type',
+  area: 'Occupied area',
+  squareMetres: 'm²',
+  timeFrom: 'From',
+  timeTo: 'To',
+  conscriptionNumber: 'Conscription number',
+  sourceText: 'Location',
+  queriedAt: 'Queried at',
+  close: 'Close',
+  timeline: 'Timeline',
+  openTimeline: 'Time machine',
+  today: 'Today',
+  partialDataWarning:
+    'Data for this date could be incomplete (before the earliest query)',
+  loading: 'Loading…',
+  language: 'Language',
+  theme: 'Theme',
+  darkMode: 'Dark',
+  lightMode: 'Light',
+  showAllDates: 'All dates',
+  zoomToPermits: 'Zoom to permits',
+  attribution: '© OpenStreetMap contributors',
+  futureDataWarning:
+    'Data for this future date is incomplete (new permits may be issued until then)',
+}
+
+const messages: Record<Locale, MessageSchema> = { hu, en }
+
+export const i18n = createI18n({
+  legacy: false,
+  locale: 'hu',
+  fallbackLocale: 'en',
+  messages,
+})

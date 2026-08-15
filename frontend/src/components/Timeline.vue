@@ -1,4 +1,4 @@
-<script src="./Timeline.js"></script>
+<script lang="ts" src="./Timeline.ts"></script>
 
 <template>
   <div class="timeline" :class="{ partial: isPartial, future: isFuture }">

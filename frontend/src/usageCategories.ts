@@ -1,7 +1,20 @@
-import { USAGE_TYPE_KEYS, USAGE_TYPES } from './usageTypes'
+import { USAGE_TYPE_KEYS, USAGE_TYPES, type UsageTypeKey } from './usageTypes'
+
+// A named bundle of usage types, with a label per locale
+interface CategoryGroup {
+  key: string
+  en: string
+  hu: string
+  types: UsageTypeKey[]
+}
+
+// A category as the legend and the map consume it: its swatch colour resolved
+export interface UsageCategory extends CategoryGroup {
+  color: string
+}
 
 // Order here is the display order
-const GROUPS = [
+const GROUPS: CategoryGroup[] = [
   {
     key: 'advertising',
     en: 'Advertising',
@@ -135,7 +148,7 @@ const GROUPS = [
 const assigned = new Set(GROUPS.flatMap((group) => group.types))
 const leftover = USAGE_TYPE_KEYS.filter((key) => !assigned.has(key))
 
-const RAW_CATEGORIES = [
+const RAW_CATEGORIES: CategoryGroup[] = [
   ...GROUPS.map((group) => ({
     ...group,
     types: group.types.filter((key) => key in USAGE_TYPES),
@@ -149,7 +162,7 @@ const RAW_CATEGORIES = [
 const CATEGORY_SATURATION = 60
 const CATEGORY_LIGHTNESS = 50
 
-function subtypeColor(hue, index, count) {
+function subtypeColor(hue: number, index: number, count: number): string {
   // Spread subcategories across a narrow lightness band around the category colour
   const lightness =
     count <= 1 ? CATEGORY_LIGHTNESS : Math.round(38 + (index / (count - 1)) * 26)
@@ -157,31 +170,31 @@ function subtypeColor(hue, index, count) {
 }
 
 // usageTypeKey -> colour, derived below. Used by the map and the legend swatches
-const TYPE_COLORS = {}
+const TYPE_COLORS: Partial<Record<UsageTypeKey, string>> = {}
 
-export const USAGE_CATEGORIES = RAW_CATEGORIES.map((category, index) => {
+export const USAGE_CATEGORIES: UsageCategory[] = RAW_CATEGORIES.map((category, index) => {
   const hue = Math.round((index / RAW_CATEGORIES.length) * 360)
 
   category.types.forEach((key, typeIndex) => {
     TYPE_COLORS[key] = subtypeColor(hue, typeIndex, category.types.length)
   })
 
-  return {
-    ...category,
-    // A category with a single subcategory is shown as a plain category, so its swatch
-    // is that subcategory's colour rather than the (unused) neutral category hue
-    color:
-      category.types.length === 1
-        ? TYPE_COLORS[category.types[0]]
-        : `hsl(${hue}, ${CATEGORY_SATURATION}%, ${CATEGORY_LIGHTNESS}%)`,
-  }
+  // A category with a single subcategory is shown as a plain category, so its swatch
+  // is that subcategory's colour rather than the (unused) neutral category hue
+  const [onlyType] = category.types
+  const color =
+    category.types.length === 1 && onlyType
+      ? usageColor(onlyType)
+      : `hsl(${hue}, ${CATEGORY_SATURATION}%, ${CATEGORY_LIGHTNESS}%)`
+
+  return { ...category, color }
 })
 
-export function categoryLabel(category, locale) {
+export function categoryLabel(category: CategoryGroup, locale: string): string {
   return locale === 'hu' ? category.hu : category.en
 }
 
 // Colour for a usage type, derived from its category, with a fallback
-export function usageColor(key) {
-  return TYPE_COLORS[key] ?? 'hsl(0, 0%, 60%)'
+export function usageColor(key: string): string {
+  return TYPE_COLORS[key as UsageTypeKey] ?? 'hsl(0, 0%, 60%)'
 }

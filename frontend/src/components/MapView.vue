@@ -1,4 +1,4 @@
-<script src="./MapView.js"></script>
+<script lang="ts" src="./MapView.ts"></script>
 
 <template>
   <div class="map-root">

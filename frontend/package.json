@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
     "uat": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -25,8 +26,13 @@
     "vue-i18n": "^11.4.8"
   },
   "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^26.2.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.2.0",
     "@vitejs/plugin-vue": "^6.0.8",
-    "vite": "^8.2.1"
+    "typescript": "^6.0.3",
+    "vite": "^8.2.1",
+    "vue-tsc": "^3.3.9"
   },
   "packageManager": "pnpm@11.9.0"
 }

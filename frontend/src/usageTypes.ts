@@ -1,5 +1,11 @@
 // Keep in sync with backend/src/permits/usage_types.py!
 // Each usage type maps to an English + Hungarian label and a legend colour
+export interface UsageType {
+  en: string
+  hu: string
+  color: string
+}
+
 export const USAGE_TYPES = {
   "advertising_board": {
     "en": "Advertising board",
@@ -341,11 +347,16 @@ export const USAGE_TYPES = {
     "hu": "Sétatricikli",
     "color": "hsl(354, 78%, 48%)"
   }
-}
+} satisfies Record<string, UsageType>
 
-export const USAGE_TYPE_KEYS = Object.keys(USAGE_TYPES)
+// Every key of USAGE_TYPES, so the category lists in usageCategories.ts cannot name one
+// that does not exist. Values coming from the API are plain strings and are looked up
+// through usageLabel()/usageColor(), which fall back to 'uncategorized'
+export type UsageTypeKey = keyof typeof USAGE_TYPES
 
-export function usageLabel(key, locale) {
-  const entry = USAGE_TYPES[key] ?? USAGE_TYPES.uncategorized
+export const USAGE_TYPE_KEYS = Object.keys(USAGE_TYPES) as UsageTypeKey[]
+
+export function usageLabel(key: string, locale: string): string {
+  const entry = USAGE_TYPES[key as UsageTypeKey] ?? USAGE_TYPES.uncategorized
   return locale === 'hu' ? entry.hu : entry.en
 }
