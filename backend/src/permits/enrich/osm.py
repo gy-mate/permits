@@ -3,9 +3,14 @@
 Used when a permit has neither a conscription number nor one embedded in its
 ``place`` text. A parsed ``(street, house_number)`` is matched against OSM address
 features, preferring those tagged as being in Budapest.
+
+Responses are memoised per import process with :func:`functools.lru_cache` (keyed on
+the query text), so repeated addresses and repeated in-area searches cost one request.
 """
 
+import asyncio
 import logging
+from functools import lru_cache
 
 import httpx
 from shapely import wkt as shapely_wkt
@@ -102,9 +107,7 @@ def build_branded_amenity_query(
     """
 
 
-async def query_geometries(
-    client: httpx.AsyncClient, query: str
-) -> list[BaseGeometry]:
+async def run_query(client: httpx.AsyncClient, query: str) -> list[BaseGeometry]:
     """POST a SPARQL query and parse every ``?geom`` binding as a WGS84 geometry."""
 
     async for attempt in retrying():
@@ -129,6 +132,26 @@ async def query_geometries(
             ]
 
     return []
+
+
+@lru_cache(maxsize=4096)
+def query_task(client: httpx.AsyncClient, query: str) -> asyncio.Task:
+    """Memoised shared task per (client, query).
+
+    Awaiting an already-finished task repeatedly returns its cached result, so this
+    deduplicates identical queries across the whole import. The client is part of the
+    key, so a fresh import (with a fresh client) never reuses a task from a closed loop.
+    """
+
+    return asyncio.ensure_future(run_query(client, query))
+
+
+async def query_geometries(
+    client: httpx.AsyncClient, query: str
+) -> list[BaseGeometry]:
+    """Run (or replay from cache) a SPARQL query, returning its ``?geom`` geometries."""
+
+    return await query_task(client, query)
 
 
 async def query_geometry(client: httpx.AsyncClient, query: str) -> BaseGeometry | None:

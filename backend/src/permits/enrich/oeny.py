@@ -2,9 +2,14 @@
 
 The OENY ``bounding-box`` endpoint returns the parcel outline in the Hungarian EOV
 projection (EPSG:23700); we reproject it to WGS84 (EPSG:4326) before storing.
+
+Both lookups are memoised per import process with :func:`functools.lru_cache`, since
+many permits share a lot number (and so a parcel id) within a single run.
 """
 
+import asyncio
 import logging
+from functools import lru_cache
 
 import httpx
 from pyproj import Transformer
@@ -55,7 +60,7 @@ def select_parcel(results: list[dict], lot_number: str) -> dict | None:
     return results[0] if results else None
 
 
-async def find_parcel_id(
+async def run_parcel_search(
     client: httpx.AsyncClient, ksh_code: str, lot_number: str
 ) -> int | None:
     """Resolve a conscription (lot) number to an OENY parcel id."""
@@ -85,7 +90,28 @@ async def find_parcel_id(
     return None
 
 
-async def parcel_geometry(
+@lru_cache(maxsize=4096)
+def parcel_search_task(
+    client: httpx.AsyncClient, ksh_code: str, lot_number: str
+) -> asyncio.Task:
+    """Memoised shared task per (client, ksh_code, lot_number).
+
+    The same lot is looked up once per import however many permits reference it; the
+    client is part of the key so a fresh import never reuses a closed loop's task.
+    """
+
+    return asyncio.ensure_future(run_parcel_search(client, ksh_code, lot_number))
+
+
+async def find_parcel_id(
+    client: httpx.AsyncClient, ksh_code: str, lot_number: str
+) -> int | None:
+    """Resolve (or replay from cache) a conscription number to an OENY parcel id."""
+
+    return await parcel_search_task(client, ksh_code, lot_number)
+
+
+async def run_parcel_geometry(
     client: httpx.AsyncClient, parcel_id: int
 ) -> BaseGeometry | None:
     """Fetch a parcel's outline and return a WGS84 shapely geometry (or ``None``)."""
@@ -113,3 +139,18 @@ async def parcel_geometry(
             )
 
     return None
+
+
+@lru_cache(maxsize=4096)
+def parcel_geometry_task(client: httpx.AsyncClient, parcel_id: int) -> asyncio.Task:
+    """Memoised shared task per (client, parcel_id); see :func:`parcel_search_task`."""
+
+    return asyncio.ensure_future(run_parcel_geometry(client, parcel_id))
+
+
+async def parcel_geometry(
+    client: httpx.AsyncClient, parcel_id: int
+) -> BaseGeometry | None:
+    """Fetch (or replay from cache) a parcel's outline as a WGS84 shapely geometry."""
+
+    return await parcel_geometry_task(client, parcel_id)
