@@ -7,9 +7,10 @@ __pycache__/
 .ruff_cache/
 .idea
 
-node_modules/
-frontend/dist/
-*.local
+**/node_modules/
+**/dist/
+**/*.local
+**/.DS_Store
 
 infra/tofu/.terraform/
 infra/tofu/*.tfstate
@@ -19,5 +20,3 @@ infra/tofu/*.tfvars
 !infra/tofu/*.tfvars.example
 kubeconfig
 *.kubeconfig
-
-.DS_Store

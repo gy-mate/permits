@@ -1,0 +1,9 @@
+# From .gitignore
+**/node_modules/
+**/dist/
+**/*.local
+**/.DS_Store
+
+# .dockerignore only
+Dockerfile
+.dockerignore
