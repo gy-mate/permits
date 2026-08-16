@@ -22,7 +22,7 @@ backend/    FastAPI + SQLAlchemy + GeoAlchemy2 ingestion/enrichment API (Python 
 frontend/   Vue 3 + Vite + MapLibre viewer (pnpm), hosted on AWS Amplify
 infra/
   tofu/     OpenTofu: Hetzner k3s cluster (CX23 / AMD64)
-  k8s/      Manifests: Postgres StatefulSet, backend, CronJobs, ingress, autoscaler
+  k8s/      Manifests: PostgreSQL StatefulSet, backend, CronJobs, ingress, autoscaler
 compose.yaml  Local stack: db + backend + frontend
 ```
 
@@ -165,14 +165,16 @@ kubectl -n kube-system create secret generic hcloud --from-literal=token=$TF_VAR
 helm repo add hcloud https://charts.hetzner.cloud && helm repo update
 helm install hccm hcloud/hcloud-cloud-controller-manager -n kube-system --set networking.enabled=true
 
-# Hetzner CSI (PVCs for the Postgres StatefulSet)
+# Hetzner CSI (PVCs for the PostgreSQL StatefulSet)
 helm install hcloud-csi hcloud/hcloud-csi -n kube-system
 
-# ingress-nginx (fronted by a Hetzner LB) + cert-manager
+# ingress-nginx (fronted by a Hetzner LB) + cert-manager.
+# `tcp.5432` streams PostgreSQL through the *same* LB as HTTP/HTTPS
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace \
   --set controller.service.annotations."load-balancer\.hetzner\.cloud/location"=fsn1 \
-  --set controller.service.annotations."load-balancer\.hetzner\.cloud/use-private-ip"="true"
+  --set controller.service.annotations."load-balancer\.hetzner\.cloud/use-private-ip"="true" \
+  --set tcp.5432="permits/permits-db-public:5432"
 helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true
 ```
@@ -230,17 +232,27 @@ nodes up to 3** (cluster total ≤ 4 CX23) and removes them when idle.
 
 ### 6.1. Connecting to the database
 
-The Postgres StatefulSet is exposed publicly by the `permits-db-public` Hetzner Load
-Balancer (`infra/k8s/10-postgres.yaml`). Connect via port `5432` with:
+The PostgreSQL StatefulSet is exposed publicly on port `5432` of the **ingress LoadBalancer**
+— ingress-nginx proxies the raw TCP stream to the `permits-db-public`
+ClusterIP Service (`infra/k8s/10-postgres.yaml`). Connect with:
 
 1. **Username and password:** the `POSTGRES_USER` / `POSTGRES_PASSWORD` defined in `.env`.
-2. **Host:** the Load Balancer's external IP. `export KUBECONFIG=infra/tofu/kubeconfig`
+2. **Host:** `TF_VAR_hostname` — its DNS record is grey-cloud (§5), so it resolves
+   straight to the LB. The IP works too; `export KUBECONFIG=infra/tofu/kubeconfig`
    first, then:
 
    ```bash
-   kubectl -n permits get svc permits-db-public \
+   kubectl -n ingress-nginx get svc ingress-nginx-controller \
      -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{"\n"}{end}'
    ```
+
+   ```bash
+   psql "postgresql://$POSTGRES_USER@$TF_VAR_hostname:5432/$POSTGRES_DB"
+   ```
+
+Note: PostgreSQL sees the ingress-nginx pod's IP as the client address
+so it makes the server log's `connection from` lines useless,
+and the database is unreachable from outside while ingress-nginx is down.
 
 ### 6.2. Updating a running Deployment
 

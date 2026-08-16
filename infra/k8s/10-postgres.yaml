@@ -1,5 +1,6 @@
-# The DB is reachable publicly, but ONLY with the username+password below 
-# — scram-sha-256 host auth is enforced (never trust)
+# The DB is reachable publicly, but ONLY with the username+password below
+# — scram-sha-256 host auth is enforced (never trust).
+# Public access goes through the ingress-nginx LoadBalancer
 apiVersion: v1
 kind: Secret
 metadata:
@@ -26,19 +27,15 @@ spec:
     - port: 5432
       targetPort: 5432
 ---
-# Public access via a Hetzner Cloud Load Balancer (provisioned by the CCM).
+# The target of ingress-nginx's TCP stream for port 5432.
 # Access still requires the username+password — Postgres enforces scram-sha-256 auth
 apiVersion: v1
 kind: Service
 metadata:
   name: permits-db-public
   namespace: permits
-  annotations:
-    load-balancer.hetzner.cloud/name: permits-db
-    load-balancer.hetzner.cloud/location: fsn1
-    load-balancer.hetzner.cloud/use-private-ip: "true"
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: permits-db
   ports:

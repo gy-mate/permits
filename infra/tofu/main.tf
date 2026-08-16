@@ -21,7 +21,9 @@ resource "hcloud_placement_group" "cluster" {
 }
 
 # Allow SSH, the k3s API, and HTTP/HTTPS to the cluster. Postgres (5432) is exposed
-# publicly via the Hetzner LB the CCM provisions; it is intentionally reachable
+# publicly as a TCP stream on the same ingress LB; it is intentionally reachable.
+# The LB reaches the nodes over the private network (use-private-ip),
+# which this firewall does not filter
 
 resource "hcloud_firewall" "cluster" {
   name = "permits"
