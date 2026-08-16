@@ -73,7 +73,7 @@ The backend is configured entirely through environment variables (see `.env.exam
 | variable | description |
 |---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Database credentials. Compose builds the backend's async SQLAlchemy DSN (`DB_CONNECTION_STRING`) from these. |
-| `PERMITS_CORS_ORIGINS` | CORS origins for the public read API (comma-separated, or `*`). |
+| `PERMITS_CORS_ORIGINS_DEV` / `PERMITS_CORS_ORIGINS_PROD` | CORS origins for the public read API (comma-separated, or `*`). Compose passes `_DEV` to the backend, `infra/k8s/20-backend.yaml` passes `_PROD`; both arrive as `PERMITS_CORS_ORIGINS`. Keep `localhost` out of `_PROD` for security reasons. |
 | `PERMITS_ENRICH_TIMEOUT` | Per-lookup total retry budget (seconds) before the enrichment — and the whole import transaction — fails. |
 | `PERMITS_WIKIDATA_SPARQL_API_URL` | Wikidata SPARQL endpoint used for client / KSH code / timezone lookups. |
 | `PERMITS_OSM_SPARQL_API_URL` | OSM SPARQL endpoint used for the address geocoding fallback. |
@@ -366,14 +366,14 @@ cd frontend && pnpm install && pnpm dev
 
 The frontend lives at `permits.example.com` (Amplify) and calls the backend directly at
 its own host `api.permits.example.com` (`TF_VAR_hostname`). Cross-origin, so the backend
-must allow the frontend origin via `PERMITS_CORS_ORIGINS` (step 6 in §5 / `.env`).
+must allow the frontend origin via `PERMITS_CORS_ORIGINS_PROD` (step 6 in §5 / `.env`).
 
 1. Amplify Console → *New app → Host web app* → connect this GitHub repo.
 2. **Monorepo:** set the app root to `frontend` (Amplify reads `frontend/amplify.yml`,
    which runs `pnpm install && pnpm run build` and publishes `dist/`).
 3. Set the env var `VITE_API_BASE_URL=https://api.permits.example.com` (your
-   `TF_VAR_hostname`). Ensure that origin is in the backend's `PERMITS_CORS_ORIGINS`
-   (e.g. `PERMITS_CORS_ORIGINS=https://permits.example.com`).
+   `TF_VAR_hostname`). Ensure that origin is in the backend's `PERMITS_CORS_ORIGINS_PROD`
+   (e.g. `PERMITS_CORS_ORIGINS_PROD=https://permits.example.com`).
 4. **Custom domain** (Cloudflare, i.e. a third-party DNS provider — see the
    [AWS docs](https://docs.aws.amazon.com/amplify/latest/userguide/custom-domains.html)):
    Amplify Console → *Hosting → Custom domains → Add domain* → enter the **root** domain
