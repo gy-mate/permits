@@ -6,4 +6,21 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    chunkSizeWarningLimit: 550,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules[\\/]/,
+              minSize: 100_000,
+              maxSize: 750_000,
+            },
+          ],
+        },
+      },
+    },
+  },
 })
